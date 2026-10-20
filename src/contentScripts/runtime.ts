@@ -3,7 +3,7 @@ import 'uno.css'
 
 import { createApp } from 'vue'
 
-import { initializeDarkTheme } from '~/composables/useDark'
+import { initializeDarkTheme, useDark } from '~/composables/useDark'
 import { BEWLY_MOUNTED } from '~/constants/globalEvents'
 import { settings, settingsReady } from '~/logic'
 import { setupApp } from '~/logic/common-setup'
@@ -278,6 +278,8 @@ async function injectApp() {
   // mount component to context window
   const container = document.createElement('div')
   container.id = 'bewly'
+  // Theme initialization runs before this shadow host exists.
+  container.classList.toggle('dark', useDark().isDark.value)
   container.setAttribute('data-version', version)
   container.setAttribute('data-dev', import.meta.env.DEV ? 'true' : 'false')
   const root = document.createElement('div')

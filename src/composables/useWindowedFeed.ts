@@ -92,9 +92,11 @@ export function useWindowedFeed<T>(options: {
           return
       }
     }
-    catch {
-      if (current())
+    catch (error) {
+      if (current()) {
         loadFailed.value = true
+        console.error('[BewlyBewly] Could not load feed', error)
+      }
     }
     finally {
       if (current()) {

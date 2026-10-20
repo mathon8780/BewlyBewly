@@ -20,7 +20,7 @@ const { items: videoList, isLoading, noMoreContent, needToLoginFirst, windowFull
   beforeLoading: () => emit('beforeLoading'),
   afterLoading: () => emit('afterLoading'),
   loadPage: async (current) => {
-    const response: MomentResult = await api.moment.getMoments({ type: 'pgc', offset: Number(offset), update_baseline: updateBaseline })
+    const response: MomentResult = await api.moment.getMoments({ type: 'pgc', offset, update_baseline: updateBaseline })
     if (!current())
       return { items: [], done: true }
     if (response.code === -101)

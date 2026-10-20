@@ -45,23 +45,30 @@ const { items: videoList, isLoading, noMoreContent, needToLoginFirst, windowFull
   loadPage: async (current) => {
     // Followed livestreams are a finite prefix, with their own independent cursor.
     if (!liveFinished) {
-      const response: FollowingLiveResult = await api.live.getFollowingLiveList({ page: livePage, page_size: 9 })
-      if (!current())
-        return { items: [], done: true }
-      if (response.code === -101)
-        return { items: [], done: true, unauthorized: true }
-      if (response.code !== 0)
-        throw new Error(response.message)
-      livePage++
-      const raw = response.data.list
-      liveFinished = raw.length < 9 || raw.some(item => item.live_status !== 1)
-      const items = raw.filter(item => item.live_status === 1)
-        .map(item => ({ uniqueId: `live-${item.roomid}`, liveItem: item }))
-      if (items.length)
-        return { items, done: false }
-      liveFinished = true
+      try {
+        const response: FollowingLiveResult = await api.live.getFollowingLiveList({ page: livePage, page_size: 9 })
+        if (!current())
+          return { items: [], done: true }
+        if (response.code !== 0)
+          throw new Error(response.message)
+        const raw = response.data.list
+        const items = raw.filter(item => item.live_status === 1)
+          .map(item => ({ uniqueId: `live-${item.roomid}`, liveItem: item }))
+        livePage++
+        liveFinished = raw.length < 9 || raw.some(item => item.live_status !== 1)
+        if (items.length)
+          return { items, done: false }
+        liveFinished = true
+      }
+      catch (error) {
+        if (!current())
+          return { items: [], done: true }
+        // Livestreams are optional: their failure must not block followed videos.
+        liveFinished = true
+        console.warn('[BewlyBewly] Could not load followed livestreams', error)
+      }
     }
-    const response: MomentResult = await api.moment.getMoments({ type: 'video', offset: Number(offset), update_baseline: updateBaseline })
+    const response: MomentResult = await api.moment.getMoments({ type: 'video', offset, update_baseline: updateBaseline })
     if (!current())
       return { items: [], done: true }
     if (response.code === -101)

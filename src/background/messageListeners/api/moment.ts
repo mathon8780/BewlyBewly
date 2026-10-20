@@ -40,7 +40,7 @@ const API_MOMENT = {
     },
     params: {
       type: 'all',
-      offset: 0,
+      offset: '',
       update_baseline: '',
     },
     afterHandle: AHS.J_D,
