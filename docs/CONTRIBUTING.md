@@ -150,6 +150,10 @@ Then package it to the `extension-firefox` folder
 
 ### Commit Convention
 
+Every commit must use Conventional Commits: `<type>[optional scope]: <description>`. Write the subject, body, and footer entirely in English.
+
+Before composing a message, run `git log -12 --oneline` and follow the relevant recent conventions for types, scopes, and wording. Use a concise imperative subject that accurately describes the change. Persistent instructions for coding agents are in the root [AGENTS.md](../AGENTS.md).
+
 You can also refer to the [Angular commit message guidelines](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines)
 
 - `feat`: New feature
@@ -163,9 +167,12 @@ You can also refer to the [Angular commit message guidelines](https://github.com
 - `ci`: Changes to continuous integration/delivery
 Also welcome to add scope and footer
 For example:
-`fix(dock): xxx`
-`Change description`
-`Related PR: url`
+
+```text
+fix(dock): adjust scaling margins to prevent dock overflow
+
+Account for the scaled dock width when calculating its margins.
+```
 
 ### I18n
 

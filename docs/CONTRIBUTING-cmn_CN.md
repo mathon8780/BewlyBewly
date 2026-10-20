@@ -7,6 +7,8 @@
 此项目是基于 [Vite](https://vitejs.dev/) 构建的，请确保本地安装了 [Node.js](https://nodejs.org/) 和 [pnpm](https://pnpm.io/)，
 同时建议你用 [Visual Studio Code](https://code.visualstudio.com/) 进行开发。
 
+Windows 本机配置、常用命令和浏览器加载方法见[本机开发环境记录](LOCAL_DEVELOPMENT-cmn_CN.md)。
+
 ## 🔧 开发和构建项目
 
 ### 开发 (Chrome or Edge)
@@ -153,6 +155,10 @@ pnpm build-firefox
 
 ### Commit 规范
 
+每次提交都必须遵循 Conventional Commits 格式：`<type>[可选 scope]: <description>`。提交标题、正文和 footer 均使用英语。
+
+编写提交信息前，先运行 `git log -12 --oneline`，参考近期相关提交的类型、scope 和措辞。标题使用简洁的英语祈使句，准确描述本次改动。面向代码代理的持久规则见仓库根目录的 [AGENTS.md](../AGENTS.md)。
+
 你也可以参照 [Angular commit message guidelines](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines)
 
 - `feat`：新功能
@@ -166,9 +172,12 @@ pnpm build-firefox
 - `ci`：持续集成/交付的变更
 也欢迎增加 scope 和 footer
 例如:
-`fix(dock): xxx`
-`变更描述`
-`相关 PR: url`
+
+```text
+fix(dock): adjust scaling margins to prevent dock overflow
+
+Account for the scaled dock width when calculating its margins.
+```
 
 ### I18n
 
