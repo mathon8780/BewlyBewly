@@ -14,5 +14,6 @@ extension/
 extension-firefox/
 extension-safari/
 node_modules
+.pnpm-store/
 web-ext-profile
 extension-safari-macos/

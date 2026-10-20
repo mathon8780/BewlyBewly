@@ -25,17 +25,8 @@ export default antfu(
       'no-alert': 'off',
       'style/quote-props': 'off',
     },
-    eslint: {
-      ignorePatterns: [
-        'dist',
-        'node_modules',
-        'public',
-        'extension',
-        'extension-firefox',
-      ],
-    },
   },
-  { ignores: ['**/.planning/**'] },
+  { ignores: ['**/.planning/**', '**/.pnpm-store/**', 'dist/**', 'public/**', 'extension/**', 'extension-firefox/**', 'extension-safari/**'] },
   {
     plugins: {
       'simple-import-sort': simpleImportSort,

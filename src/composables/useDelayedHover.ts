@@ -5,8 +5,15 @@ export function useDelayedHover({ enterDelay = 300, leaveDelay = 300, beforeEnte
 { enterDelay?: number, leaveDelay?: number, beforeEnter?: Function, enter: Function, beforeLeave?: Function, leave: Function }) {
   const el = ref<HTMLElement>()
 
-  let enterTimer: any | undefined
-  let leaveTimer: any | undefined
+  let enterTimer: ReturnType<typeof setTimeout> | undefined
+  let leaveTimer: ReturnType<typeof setTimeout> | undefined
+
+  function clearTimers() {
+    clearTimeout(enterTimer)
+    clearTimeout(leaveTimer)
+    enterTimer = undefined
+    leaveTimer = undefined
+  }
 
   function handleMouseEnter() {
     if (beforeEnter)
@@ -41,32 +48,18 @@ export function useDelayedHover({ enterDelay = 300, leaveDelay = 300, beforeEnte
     }, leaveDelay)
   }
 
-  watch(el, (el, _, onCleanup) => {
-    if (el) {
-      if (!settings.value.touchScreenOptimization) {
-        el.addEventListener('mouseenter', handleMouseEnter)
-        el.addEventListener('mouseleave', handleMouseLeave)
-      }
+  watch([el, () => settings.value.touchScreenOptimization], ([element, touchScreenOptimization], _, onCleanup) => {
+    if (element && !touchScreenOptimization) {
+      element.addEventListener('mouseenter', handleMouseEnter)
+      element.addEventListener('mouseleave', handleMouseLeave)
     }
 
     onCleanup(() => {
-      if (el) {
-        el.removeEventListener('mouseenter', handleMouseEnter)
-        el.removeEventListener('mouseleave', handleMouseLeave)
-      }
+      clearTimers()
+      element?.removeEventListener('mouseenter', handleMouseEnter)
+      element?.removeEventListener('mouseleave', handleMouseLeave)
     })
-  }, { flush: 'post' })
-
-  watch(() => settings.value.touchScreenOptimization, (newValue) => {
-    if (newValue) {
-      el.value?.removeEventListener('mouseenter', handleMouseEnter)
-      el.value?.removeEventListener('mouseleave', handleMouseLeave)
-    }
-    else {
-      el.value?.addEventListener('mouseenter', handleMouseEnter)
-      el.value?.addEventListener('mouseleave', handleMouseLeave)
-    }
-  }, { immediate: true })
+  }, { flush: 'post', immediate: true })
 
   return el
 }

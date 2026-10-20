@@ -150,15 +150,24 @@ export function delay(ms: number) {
  * @returns true if the current page is the home page
  */
 export function isHomePage(url: string = location.href): boolean {
-  if (
-    /https?:\/\/(?:www\.)?bilibili.com\/?(?:#\/?)?$/.test(url)
-    || /https?:\/\/(?:www\.)?bilibili.com\/index\.html$/.test(url)
-    || /https?:\/\/(?:www\.)?bilibili.com\/\?spm_id_from=.*/.test(url)
-    || /https?:\/\/www\.bilibili\.com\/\?.*$/.test(url)
-  ) {
-    return true
+  const parsed = parseHttpUrl(url)
+  return !!parsed && isMainSite(parsed)
+    && (parsed.pathname === '/' || parsed.pathname === '/index.html')
+}
+
+function parseHttpUrl(url: string): URL | undefined {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:')
+      return parsed
   }
-  return false
+  catch {
+    return undefined
+  }
+}
+
+function isMainSite(url: URL): boolean {
+  return url.hostname === 'www.bilibili.com' || url.hostname === 'bilibili.com'
 }
 
 /**
@@ -167,19 +176,9 @@ export function isHomePage(url: string = location.href): boolean {
  * @returns true if the current page is a video or bangumi page
  */
 export function isVideoOrBangumiPage(url: string = location.href): boolean {
-  if (
-    // video page
-    /https?:\/\/(?:www\.)?bilibili\.com\/(?:video|list)\/.*/.test(url)
-    // anime playback & movie page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/bangumi\/play\/.*/.test(url)
-    // watch later playlist
-    || /https?:\/\/(?:www\.)?bilibili\.com\/list\/watchlater\?bvid.*/.test(url)
-    || /https?:\/\/(?:www\.)?bilibili\.com\/watchlater\/list.*/.test(url)
-    // favorite playlist
-    || /https?:\/\/(?:www\.)?bilibili\.com\/list\/ml.*/.test(url)) {
-    return true
-  }
-  return false
+  const parsed = parseHttpUrl(url)
+  return !!parsed && isMainSite(parsed)
+    && /^\/(?:(?:video|list)\/|bangumi\/play\/|watchlater\/list(?:\/|$))/.test(parsed.pathname)
 }
 
 /**
@@ -188,12 +187,7 @@ export function isVideoOrBangumiPage(url: string = location.href): boolean {
  * @returns true if the current page is the notifications page
  */
 export function isNotificationPage(url: string = location.href): boolean {
-  if (
-    /https?:\/\/message\.bilibili\.com\.*/.test(url)
-  ) {
-    return true
-  }
-  return false
+  return parseHttpUrl(url)?.hostname === 'message.bilibili.com'
 }
 
 /**
@@ -212,29 +206,15 @@ export function compressAndResizeImage(file: File, maxWidth: number, maxHeight: 
   // Create a FileReader to read the file
   const reader = new FileReader()
   reader.onload = function (e) {
-    img.src = e.target?.result as string
-
     img.onload = function () {
       // Create a canvas
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
 
       // Calculate new size
-      let width = img.width
-      let height = img.height
-
-      if (width > height) {
-        if (width > maxWidth) {
-          height = Math.round(height * maxWidth / width)
-          width = maxWidth
-        }
-      }
-      else {
-        if (height > maxHeight) {
-          width = Math.round(width * maxHeight / height)
-          height = maxHeight
-        }
-      }
+      const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height)
+      const width = Math.max(1, Math.round(img.width * scale))
+      const height = Math.max(1, Math.round(img.height * scale))
 
       // Set canvas dimensions
       canvas.width = width
@@ -260,6 +240,7 @@ export function compressAndResizeImage(file: File, maxWidth: number, maxHeight: 
         callback(compressedFile)
       }, 'image/jpeg', quality)
     }
+    img.src = e.target?.result as string
   }
 
   // Read the file as a Data URL (base64)

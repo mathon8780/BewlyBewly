@@ -17,7 +17,9 @@ export function isVerticalVideo(uri: string): boolean {
 }
 
 export function parseBilibiliUri(uri: string): BilibiliUri {
-  const params = uri.split('?')[1]
+  const withoutFragment = uri.split('#')[0]
+  const queryStart = withoutFragment.indexOf('?')
+  const params = queryStart === -1 ? '' : withoutFragment.slice(queryStart + 1)
   const searchParams = new URLSearchParams(params)
   return {
     cid: searchParams.get('cid'),

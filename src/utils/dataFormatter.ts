@@ -49,26 +49,31 @@ export function numFormatter(num: number | string): string {
 }
 
 export function calcTimeSince(date: number | string | Date) {
-  const seconds = Math.floor(((Number(new Date())) - Number(date)) / 1000)
+  const timestamp = typeof date === 'string' && Number.isNaN(Number(date))
+    ? Date.parse(date)
+    : Number(date)
+  if (!Number.isFinite(timestamp))
+    return ''
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
   let interval = seconds / 31536000
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.year', Math.floor(interval))}`
   interval = seconds / 2592000
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.month', Math.floor(interval))}`
   interval = seconds / 604800
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.week', Math.floor(interval))}`
   interval = seconds / 86400
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.day', Math.floor(interval))}`
   interval = seconds / 3600
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.hour', Math.floor(interval))}`
   interval = seconds / 60
-  if (interval > 1)
+  if (interval >= 1)
     return `${Math.floor(interval)} ${t('common.minute', Math.floor(interval))}`
-  return `${Math.floor(interval)} ${t('common.second', Math.floor(interval))}`
+  return `${seconds} ${t('common.second', seconds)}`
 }
 
 export function calcCurrentTime(totalSeconds: number) {
