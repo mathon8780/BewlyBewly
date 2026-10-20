@@ -19,17 +19,9 @@ const toast = useToast()
 const showSearchPageModeSharedSettings = ref<boolean>(false)
 const showQRCodeDialog = ref<boolean>(false)
 const loginQRCodeUrl = ref<string>()
-const pollLoginQRCodeInterval = ref<any>(null)
-const authCode = ref<string>('')
 const qrcodeMsg = ref<string>('')
 
-onDeactivated(() => {
-  clearInterval(pollLoginQRCodeInterval.value)
-})
-
-onBeforeUnmount(() => {
-  clearInterval(pollLoginQRCodeInterval.value)
-})
+onDeactivated(handleCloseQRCodeDialog)
 
 function changeAppRecommendationMode() {
   settings.value.recommendationMode = 'app'
@@ -37,61 +29,67 @@ function changeAppRecommendationMode() {
     handleAuthorize()
 }
 
-async function handleAuthorize() {
+function handleAuthorize() {
+  showQRCodeDialog.value = false
   showQRCodeDialog.value = true
-  try {
-    await setLoginQRCode()
-    pollLoginQRCode()
-  }
-  catch (error) {
-    console.error(error)
-  }
 }
 
 function handleRevoke() {
   revokeAccessKey()
 }
 
-async function setLoginQRCode() {
-  const res = await getTVLoginQRCode()
-  if (res.code === 0) {
-    loginQRCodeUrl.value = res.data.url
-    authCode.value = res.data.auth_code
+watch(showQRCodeDialog, (visible, _, onCleanup) => {
+  if (!visible)
+    return
+  const controller = new AbortController()
+  const { signal } = controller
+  let timer: ReturnType<typeof setTimeout>
+  let authCode = ''
+  loginQRCodeUrl.value = ''
+  qrcodeMsg.value = ''
+  onCleanup(() => {
+    clearTimeout(timer)
+    controller.abort()
+  })
+
+  async function poll() {
+    try {
+      if (!authCode) {
+        const res = await getTVLoginQRCode(signal)
+        if (signal.aborted)
+          return
+        if (res.code !== 0)
+          throw new Error(res.message)
+        loginQRCodeUrl.value = res.data.url
+        authCode = res.data.auth_code
+      }
+      else {
+        const res = await pollTVLoginQRCode(authCode, signal)
+        if (signal.aborted)
+          return
+        if (res.code === 0) {
+          accessKey.value = res.data.access_token
+          showQRCodeDialog.value = false
+          toast.success('授权成功')
+          return
+        }
+        qrcodeMsg.value = res.message
+        if (res.code === 86038)
+          authCode = ''
+        else if (res.code !== 86039 && res.code !== 86090)
+          throw new Error(res.message)
+      }
+      timer = setTimeout(poll, 3000)
+    }
+    catch (error) {
+      if (!signal.aborted)
+        toast.error(String(error))
+    }
   }
-}
-
-function pollLoginQRCode() {
-  clearInterval(pollLoginQRCodeInterval.value)
-
-  pollLoginQRCodeInterval.value = setInterval(async () => {
-    const pollRes = await pollTVLoginQRCode(authCode.value)
-
-    // 0：成功
-    // -3：API校验密匙错误
-    // -400：请求错误
-    // -404：啥都木有
-    // 86038：二维码已失效
-    // 86039：二维码尚未确认
-    // 86090：二维码已扫码未确认
-    if (pollRes.code !== 0)
-      qrcodeMsg.value = pollRes.message
-    if (pollRes.code === 0) {
-      showQRCodeDialog.value = false
-      accessKey.value = pollRes.data.access_token
-      clearInterval(pollLoginQRCodeInterval.value)
-      toast.success('授权成功')
-    }
-    else if (pollRes.code === 86038) {
-      await setLoginQRCode()
-    }
-    else if (pollRes.code === -3 || pollRes.code === -400 || pollRes.code === -404) {
-      toast.error(pollRes.message)
-    }
-  }, 3000)
-}
+  void poll()
+}, { flush: 'sync' })
 
 function handleCloseQRCodeDialog() {
-  clearInterval(pollLoginQRCodeInterval.value)
   showQRCodeDialog.value = false
 }
 
@@ -261,7 +259,7 @@ function handleToggleHomeTab(tab: any) {
 
           <Button
             type="secondary"
-            @click="setLoginQRCode"
+            @click="handleAuthorize"
           >
             {{ $t('common.operation.refresh') }}
           </Button>

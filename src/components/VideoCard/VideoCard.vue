@@ -85,19 +85,19 @@ const isInWatchLater = computed({
   set: value => cardState.value.isInWatchLater = value,
 })
 const isHover = ref<boolean>(false)
-const mouseEnterTimeOut = ref()
-const mouseLeaveTimeOut = ref()
+let mouseEnterTimeout: ReturnType<typeof setTimeout>
 const previewVideoUrl = ref<string>('')
 const contentVisibility = ref<'auto' | 'visible'>('auto')
 const videoElement = ref<HTMLVideoElement | null>(null)
+const previewEnabled = computed(() => props.showPreview && settings.value.enableVideoPreview)
 
 let previewGeneration = 0
 let alive = true
 
-watch([isHover, () => props.video?.bvid, () => props.video?.aid, () => props.video?.cid], async () => {
+watch([isHover, previewEnabled, () => props.video?.bvid, () => props.video?.aid, () => props.video?.cid], async () => {
   const generation = ++previewGeneration
   const video = props.video
-  if (!alive || !video || !isHover.value || !props.showPreview || !settings.value.enableVideoPreview
+  if (!alive || !video || !isHover.value || !previewEnabled.value
     || previewVideoUrl.value || !(video.aid || video.bvid)) {
     return
   }
@@ -110,15 +110,15 @@ watch([isHover, () => props.video?.bvid, () => props.video?.aid, () => props.vid
     // Preview is optional; a later hover can retry a failed or timed-out request.
   }
 })
-watch([() => props.video?.bvid, () => props.video?.aid, () => props.video?.id], () => {
+watch([() => props.video?.bvid, () => props.video?.aid, () => props.video?.id, () => props.video?.cid], () => {
   previewVideoUrl.value = ''
+  videoCurrentTime.value = null
   handelMouseLeave()
-})
+}, { flush: 'sync' })
 
 function stopPreview() {
   previewGeneration++
-  clearTimeout(mouseEnterTimeOut.value)
-  clearTimeout(mouseLeaveTimeOut.value)
+  clearTimeout(mouseEnterTimeout)
   isHover.value = false
   videoElement.value?.pause()
 }
@@ -160,31 +160,21 @@ function toggleWatchLater() {
 }
 
 function handleMouseEnter() {
-  clearTimeout(mouseEnterTimeOut.value)
+  clearTimeout(mouseEnterTimeout)
   props.video && setActivatedCover(`${removeHttpFromUrl(props.video.cover)}@672w_378h_1c_!web-home-common-cover`)
 
   // fix #789
   contentVisibility.value = 'visible'
-  if (settings.value.hoverVideoCardDelayed) {
-    mouseEnterTimeOut.value = setTimeout(() => {
-      isHover.value = true
-      clearTimeout(mouseLeaveTimeOut.value)
-    }, 1200)
-  }
-  else {
-    mouseEnterTimeOut.value = setTimeout(() => {
-      isHover.value = true
-      clearTimeout(mouseLeaveTimeOut.value)
-    }, 500)
-  }
+  mouseEnterTimeout = setTimeout(() => {
+    isHover.value = true
+  }, settings.value.hoverVideoCardDelayed ? 1200 : 500)
 }
 
 function handelMouseLeave() {
   previewGeneration++
   contentVisibility.value = 'auto'
   isHover.value = false
-  clearTimeout(mouseEnterTimeOut.value)
-  clearTimeout(mouseLeaveTimeOut.value)
+  clearTimeout(mouseEnterTimeout)
 }
 
 function handleClick(event: MouseEvent) {
@@ -323,7 +313,7 @@ provide('getVideoType', () => props.type!)
             </div>
 
             <!-- Video preview -->
-            <Transition v-if="!removed && showPreview && settings.enableVideoPreview" name="fade">
+            <Transition v-if="!removed && previewEnabled" name="fade">
               <video
                 v-if="previewVideoUrl && isHover"
                 ref="videoElement"

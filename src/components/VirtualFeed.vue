@@ -54,14 +54,15 @@ const offsets = computed(() => {
     result.push(result[index] + (heights.value[index] ?? estimate.value))
   return result
 })
-const range = computed(() => {
+const range = computed<{ start: number, end: number }>((previous) => {
   let start = 0
   while (start < rows.value.length && offsets.value[start + 1] < scrollTop.value - 700)
     start++
   let end = start
   while (end < rows.value.length && offsets.value[end] < scrollTop.value + viewHeight.value + 700)
     end++
-  return { start, end: Math.max(end, Math.min(start + 3, rows.value.length)) }
+  end = Math.max(end, Math.min(start + 3, rows.value.length))
+  return previous?.start === start && previous.end === end ? previous : { start, end }
 })
 const visibleRows = computed(() => rows.value.slice(range.value.start, range.value.end))
 let observer: ResizeObserver | undefined
@@ -159,7 +160,7 @@ watch(() => props.layout, () => {
 watch(() => props.items[0], () => {
   heights.value = {}
 })
-watch(visibleRows, () => nextTick(observeRows))
+watch(visibleRows, observeRows, { flush: 'post' })
 onMounted(start)
 onActivated(start)
 onDeactivated(stop)

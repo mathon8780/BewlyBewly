@@ -161,15 +161,11 @@ onMounted(() => {
     // Force overwrite Bilibili Evolved body tag & html tag background color
     document.body.style.setProperty('background-color', 'unset', 'important')
   }
-  // document.documentElement.style.setProperty('font-size', '14px')
-
-  document.addEventListener('scroll', () => {
-    if (window.scrollY > 0)
-      reachTop.value = false
-    else
-      reachTop.value = true
-  })
 })
+
+useEventListener(document, 'scroll', () => {
+  reachTop.value = window.scrollY === 0
+}, { passive: true })
 
 function handleDockItemClick(dockItem: DockItem) {
   // Opening in a new tab while still on the current tab doesn't require changing the `activatedPage`

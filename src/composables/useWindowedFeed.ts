@@ -157,6 +157,8 @@ export function useWindowedFeed<T>(options: {
   onActivated(() => {
     active = true
     bindActions()
+    if (!items.value.length && !loadFailed.value)
+      void load()
   })
   onDeactivated(stop)
   onBeforeUnmount(stop)

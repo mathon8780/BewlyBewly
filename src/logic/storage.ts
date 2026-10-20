@@ -217,7 +217,7 @@ export const originalSettings: Settings = {
   useOriginalBilibiliHomepage: false,
 }
 
-export const settings = useStorageLocal('settings', ref<Settings>(originalSettings), {
+export const settings = useStorageLocal('settings', ref<Settings>(structuredClone(originalSettings)), {
   mergeDefaults: true,
   debounce: 200,
   serializer: wallpaperSettingsSerializer,

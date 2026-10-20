@@ -62,42 +62,43 @@ function computeTabs(): HomeTab[] {
 
 onMounted(() => {
   showSearchPageMode.value = true
-  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
-  emitter.on(TOP_BAR_VISIBILITY_CHANGE, (val) => {
-    topBarVisibility.value = val
-    shouldMoveTabsUp.value = false
-
-    // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
-    // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
-    // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
-    if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-      if (!settings.value.useSearchPageModeOnHomePage) {
-        if (val)
-          shouldMoveTabsUp.value = false
-
-        else
-          shouldMoveTabsUp.value = true
-      }
-      else {
-        // fix #349
-        const osInstance = scrollbarRef.value?.osInstance()
-        const scrollTop = osInstance.elements().viewport.scrollTop as number
-
-        if (val)
-          shouldMoveTabsUp.value = false
-
-        else if (scrollTop > 510 + 40)
-          shouldMoveTabsUp.value = true
-      }
-    }
-  })
+  emitter.on(TOP_BAR_VISIBILITY_CHANGE, handleTopBarVisibility)
 
   currentTabs.value = computeTabs()
   activatedPage.value = currentTabs.value[0].page
 })
 
+function handleTopBarVisibility(val: boolean) {
+  topBarVisibility.value = val
+  shouldMoveTabsUp.value = false
+
+  // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
+  // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
+  // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
+  if (settings.value.autoHideTopBar && settings.value.showTopBar) {
+    if (!settings.value.useSearchPageModeOnHomePage) {
+      if (val)
+        shouldMoveTabsUp.value = false
+
+      else
+        shouldMoveTabsUp.value = true
+    }
+    else {
+      // fix #349
+      const osInstance = scrollbarRef.value?.osInstance()
+      const scrollTop = osInstance.elements().viewport.scrollTop as number
+
+      if (val)
+        shouldMoveTabsUp.value = false
+
+      else if (scrollTop > 510 + 40)
+        shouldMoveTabsUp.value = true
+    }
+  }
+}
+
 onUnmounted(() => {
-  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
+  emitter.off(TOP_BAR_VISIBILITY_CHANGE, handleTopBarVisibility)
 })
 
 function handleChangeTab(tab: HomeTab) {

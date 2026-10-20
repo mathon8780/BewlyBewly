@@ -26,45 +26,39 @@ export function getTvSign(params: Record<string, any>) {
   return appSign(params, TVAppKey.appkey, TVAppKey.appsec)
 }
 
-export function pollTVLoginQRCode(authCode: string): Promise<any> {
+export function pollTVLoginQRCode(authCode: string, signal?: AbortSignal): Promise<any> {
   const url = 'https://passport.bilibili.com/x/passport-tv-login/qrcode/poll'
 
-  return new Promise<void>((resolve, reject) => {
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      },
-      body: tvSignSearchParams({
-        appkey: TVAppKey.appkey,
-        auth_code: authCode,
-        local_id: '0',
-        ts: '0',
-      }),
-    })
-      .then(response => response.json())
-      .then(data => resolve(data))
-      .catch(error => reject(error))
+  return fetch(url, {
+    signal,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+    },
+    body: tvSignSearchParams({
+      appkey: TVAppKey.appkey,
+      auth_code: authCode,
+      local_id: '0',
+      ts: '0',
+    }),
   })
+    .then(response => response.json())
 }
 
-export function getTVLoginQRCode(): Promise<any> {
+export function getTVLoginQRCode(signal?: AbortSignal): Promise<any> {
   const url = 'https://passport.bilibili.com/x/passport-tv-login/qrcode/auth_code'
 
-  return new Promise<void>((resolve, reject) => {
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      },
-      body: tvSignSearchParams({
-        appkey: TVAppKey.appkey,
-        local_id: '0',
-        ts: '0',
-      }),
-    })
-      .then(response => response.json())
-      .then(data => resolve(data))
-      .catch(error => reject(error))
+  return fetch(url, {
+    signal,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+    },
+    body: tvSignSearchParams({
+      appkey: TVAppKey.appkey,
+      local_id: '0',
+      ts: '0',
+    }),
   })
+    .then(response => response.json())
 }

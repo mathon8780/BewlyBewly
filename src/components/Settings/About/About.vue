@@ -8,7 +8,7 @@ import { version } from '../../../../package.json'
 
 const { t } = useI18n()
 
-const importSettingsRef = ref<HTMLElement>()
+const importSettingsRef = ref<HTMLInputElement>()
 const hasNewVersion = ref<boolean>(false)
 const dialogVisible = reactive({
   sponsor: false,
@@ -52,37 +52,21 @@ onMounted(() => {
   checkGitHubRelease()
 })
 
-function handleImportSettings() {
-  if (importSettingsRef.value) {
-    importSettingsRef.value.click()
-
-    const handleChange = (event: Event) => {
-      const input = event.target as HTMLInputElement
-      if (input.files && input.files.length > 0) {
-        // A file has been selected
-        const selectedFile = input.files[0]
-        // Clear all previous file contents
-        input.value = ''
-
-        const reader = new FileReader()
-        reader.onload = (event: Event) => {
-          const fileReaderTarget = event.target as FileReader
-          const fileContent = fileReaderTarget.result as string
-          const jsonObject = JSON.parse(fileContent) as any
-
-          // Merge the new settings with the existing settings
-          Object.keys(jsonObject).forEach((key) => {
-            if (key in settings.value)
-              (settings.value as any)[key] = jsonObject[key]
-          })
-
-          importSettingsRef.value?.removeEventListener('change', handleChange)
-        }
-        reader.readAsText(selectedFile)
-      }
+async function handleImportSettings(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file)
+    return
+  try {
+    const imported = JSON.parse(await file.text())
+    for (const key of Object.keys(settings.value)) {
+      if (Object.hasOwn(imported, key))
+        (settings.value as any)[key] = imported[key]
     }
-
-    importSettingsRef.value.addEventListener('change', handleChange)
+  }
+  catch (error) {
+    console.error('Failed to import settings:', error)
   }
 }
 
@@ -103,8 +87,7 @@ function handleResetSettings() {
   )
   if (result) {
     // Remember the last selected language when resetting settings
-    originalSettings.language = settings.value.language
-    settings.value = originalSettings
+    settings.value = { ...structuredClone(originalSettings), language: settings.value.language }
   }
 }
 
@@ -261,13 +244,13 @@ async function checkGitHubRelease() {
             {{ `${$t('settings.import_settings')} / ${$t('settings.export_settings')} / ${$t('settings.reset_settings')}` }}
           </h3>
           <div flex="~ gap-2">
-            <Button class="btn" @click="handleImportSettings">
+            <Button class="btn" @click="importSettingsRef?.click()">
               <template #left>
                 <div i-uil:import />
               </template>
-              <input ref="importSettingsRef" type="file" accept=".json" hidden>
               {{ $t('settings.import_settings') }}
             </Button>
+            <input ref="importSettingsRef" type="file" accept=".json" hidden @change="handleImportSettings">
             <Tooltip placement="bottom" :content="$t('settings.export_settings_desc')">
               <Button class="btn" @click="handleExportSettings">
                 <template #left>
