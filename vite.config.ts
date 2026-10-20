@@ -18,6 +18,8 @@ export const sharedConfig: UserConfig = {
   resolve: {
     alias: {
       '~/': `${r('src')}/`,
+      // Bundle the original module instead of its UMD/core-js compatibility layer.
+      'vuedraggable': r('node_modules/vuedraggable/src/vuedraggable.js'),
     },
   },
   plugins: [

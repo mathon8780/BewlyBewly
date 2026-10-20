@@ -193,7 +193,7 @@ export async function start() {
       }
 
       // Remove the original Bilibili homepage if in Bilibili homepage & useOriginalBilibiliHomepage is enabled
-      document.body.innerHTML = ''
+      document.body.replaceChildren()
 
       // Remove the Bilibili Evolved homepage & Bilibili-Gate homepage
       injectCSS(`

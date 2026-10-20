@@ -31,9 +31,7 @@ export async function getManifest() {
       : { service_worker: './dist/background/index.js' },
 
     icons: {
-      16: './assets/icon-512.png',
-      48: './assets/icon-512.png',
-      128: './assets/icon-512.png',
+      512: './assets/icon-512.png',
     },
     permissions: [
       'storage',
@@ -123,10 +121,16 @@ export async function getManifest() {
     manifest.permissions?.push('webNavigation')
 
   if (isFirefox) {
-    manifest.browser_specific_settings = {
-      gecko: {
-        id: 'addon@bewlybewly.com',
+    const gecko = {
+      id: 'mathon@bewlybewly.com',
+      strict_min_version: '140.0',
+      data_collection_permissions: {
+        required: ['authenticationInfo', 'personallyIdentifyingInfo', 'websiteContent', 'websiteActivity', 'searchTerms'],
       },
+    }
+    manifest.browser_specific_settings = {
+      gecko,
+      gecko_android: { strict_min_version: '142.0' },
     }
   }
 
