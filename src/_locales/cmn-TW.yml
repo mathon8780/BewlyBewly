@@ -1,4 +1,6 @@
 common:
+  continue_browsing: 繼續瀏覽下一組
+  retry: 重試
   view_all: 檢視所有
   play_all: 全部播放
   loading: 載入中...

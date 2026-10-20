@@ -3,16 +3,13 @@ import 'vue-toastification/dist/index.css'
 import { createPinia } from 'pinia'
 import type { App } from 'vue'
 import Toast, { POSITION } from 'vue-toastification'
-import { getCurrentContext } from 'webext-bridge'
 
 import components from '~/components'
 import { i18n } from '~/utils/i18n'
 
 const pinia = createPinia()
 
-export async function setupApp(app: App) {
-  const context = getCurrentContext()
-
+export async function setupApp(app: App, context: 'content-script' | 'popup' | 'options' = 'content-script') {
   // Inject a globally available `$app` object in template
   app.config.globalProperties.$app = { context }
 

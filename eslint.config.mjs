@@ -35,6 +35,7 @@ export default antfu(
       ],
     },
   },
+  { ignores: ['**/.planning/**'] },
   {
     plugins: {
       'simple-import-sort': simpleImportSort,

@@ -2,7 +2,9 @@
 // 1. 直接返回data
 // 2. json化后返回data
 
+import md5 from 'md5'
 import type Browser from 'webextension-polyfill'
+import browser from 'webextension-polyfill'
 
 type FetchAfterHandler = ((data: Response) => Promise<any>) | ((data: any) => any)
 
@@ -49,7 +51,7 @@ interface API {
   params?: {
     [key: string]: any
   }
-  afterHandle: ((response: Response) => Response | Promise<Response>)[]
+  afterHandle: FetchAfterHandler[]
 }
 // 重载API 可以为函数
 type APIFunction = (message: Message, sender?: any, sendResponse?: Function) => any
@@ -59,83 +61,105 @@ interface APIMAP {
 }
 // 工厂函数API_LISTENER_FACTORY
 function apiListenerFactory(API_MAP: APIMAP) {
-  return async (message: Message, sender?: Browser.Runtime.MessageSender, sendResponse?: Function) => {
-    const contentScriptQuery = message.contentScriptQuery
-    // 检测是否有contentScriptQuery
-    if (!contentScriptQuery || !API_MAP[contentScriptQuery])
-      return console.error(`Cannot find this contentScriptQuery: ${contentScriptQuery}`)
+  // Keep this outer function synchronous: Promise<undefined> claims unrelated
+  // messages and can race another listener's actual response.
+  return (message: Message | null | undefined, sender?: Browser.Runtime.MessageSender, sendResponse?: Function) => {
+    const contentScriptQuery = message?.contentScriptQuery
+    if (!contentScriptQuery || !Object.prototype.hasOwnProperty.call(API_MAP, contentScriptQuery))
+      return
     if (API_MAP[contentScriptQuery] instanceof Function)
       return (API_MAP[contentScriptQuery] as APIFunction)(message, sender, sendResponse)
 
     const api = API_MAP[contentScriptQuery] as API
 
+    // Chromium has no cookies permission. Without a reliable account snapshot,
+    // skip deduplication so even a login change in one tab cannot reuse a GET.
     // eslint-disable-next-line node/prefer-global/process
-    if (process.env.FIREFOX && sender && sender.tab && sender.tab.cookieStoreId) {
-      const cookies = await browser.cookies.getAll({ storeId: sender.tab.cookieStoreId })
-      return doRequest(message, api, sendResponse, cookies)
-    }
+    if (!process.env.FIREFOX)
+      return doRequest(message!, api, sendResponse)
 
-    return doRequest(message, api, sendResponse)
+    // Include the current cookie context in the key, including login changes while
+    // an older GET is pending. Never share results between Firefox containers.
+    const cookieStoreId = sender?.tab?.cookieStoreId
+    return browser.cookies.getAll({ url: api.url, ...(cookieStoreId ? { storeId: cookieStoreId } : {}) }).then((cookies) => {
+      const accountContext = `${cookieStoreId || 'default'}:${md5(JSON.stringify(cookies.map(cookie => [cookie.name, cookie.value, cookie.domain, cookie.path]).sort()))}`
+      return doRequest(message!, api, sendResponse, cookies, accountContext)
+    })
   }
 }
 
-function doRequest(message: Message, api: API, sendResponse?: Function, cookies?: Browser.Cookies.Cookie[]) {
-  try {
-    let { contentScriptQuery, ...rest } = message
-    // rest above two part body or params
-    rest = rest || {}
+const REQUEST_TIMEOUT = 15000
+const MAX_IN_FLIGHT = 256
+// Pending GETs only: no completed responses or account data cache.
+const inFlight = new Map<string, Promise<any>>()
 
-    let { _fetch, url, params = {}, afterHandle } = api
-    const { method, headers = {}, body } = _fetch as _FETCH
-    const isGET = method.toLocaleLowerCase() === 'get'
-    // merge params and body
-    const targetParams = Object.assign({}, params)
-    let targetBody = Object.assign({}, body)
-    Object.keys(rest).forEach((key) => {
-      if (body && body[key] !== undefined)
-        targetBody[key] = rest[key]
-      else
-        targetParams[key] = rest[key]
-    })
+async function doRequest(message: Message, api: API, sendResponse?: Function, cookies?: Browser.Cookies.Cookie[], accountContext?: string) {
+  const { contentScriptQuery, ...rest } = message
+  const { _fetch, params = {}, afterHandle } = api
+  let { url } = api
+  const { method, body } = _fetch
+  // Header objects belong to API definitions and must never hold a container's cookies.
+  const headers = { ..._fetch.headers }
+  const isGET = method.toLowerCase() === 'get'
+  const targetParams = { ...params }
+  let targetBody: any = { ...body }
+  Object.keys(rest).forEach((key) => {
+    if (body && body[key] !== undefined)
+      targetBody[key] = rest[key]
+    else
+      targetParams[key] = rest[key]
+  })
+  const urlParams = new URLSearchParams()
+  for (const key in targetParams) {
+    if (targetParams[key] !== undefined && targetParams[key] !== null && targetParams[key] !== '')
+      urlParams.append(key, String(targetParams[key]))
+  }
+  if (urlParams.size)
+    url += `${url.includes('?') ? '&' : '?'}${urlParams}`
+  if (!isGET) {
+    targetBody = headers['Content-Type']?.includes('application/x-www-form-urlencoded')
+      ? new URLSearchParams(targetBody)
+      : JSON.stringify(targetBody)
+  }
+  if (cookies)
+    headers['firefox-multi-account-cookie'] = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
 
-    // generate params
-    if (Object.keys(targetParams).length) {
-      const urlParams = new URLSearchParams()
-      for (const key in targetParams)
-        targetParams[key] && urlParams.append(key, targetParams[key])
-      url += `?${urlParams.toString()}`
-    }
-    // generate body
-    if (!isGET) {
-      targetBody = (headers && headers['Content-Type'] && headers['Content-Type'].includes('application/x-www-form-urlencoded'))
-        ? new URLSearchParams(targetBody)
-        : JSON.stringify(targetBody)
-    }
-    // generate cookies
-    if (cookies) {
-      const cookieStr = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
-      headers['firefox-multi-account-cookie'] = cookieStr
-    }
-    // get cant take body
-    const fetchOpt = { method, headers }
-    !isGET && Object.assign(fetchOpt, { body: targetBody })
-    // fetch and after handle
-    let baseFunc = fetch(url, {
-      ...fetchOpt,
+  const key = isGET && accountContext ? JSON.stringify([accountContext, contentScriptQuery, url, headers]) : undefined
+  let pending = key ? inFlight.get(key) : undefined
+  if (!pending) {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(new Error('Background request timed out'))
+      }, REQUEST_TIMEOUT)
     })
-    afterHandle.forEach((func) => {
-      if (func.name === sendResponseHandler.name && sendResponse)
-        // sendResponseHandler 是一个特殊的后处理函数，需要传入sendResponse
-        baseFunc = baseFunc.then(sendResponseHandler(sendResponse))
-      else
-        baseFunc = baseFunc.then(func)
-    })
-    baseFunc.catch(console.error)
-    return baseFunc
+    const request = (async () => {
+      let result: any = await fetch(url, { method, headers, ...(!isGET ? { body: targetBody } : {}), signal: controller.signal })
+      if (!result.ok)
+        throw new Error(`Background request failed with HTTP ${result.status}`)
+      for (const handler of afterHandle) {
+        if (handler !== sendResponseHandler)
+          result = await handler(result)
+      }
+      return result
+    })()
+    pending = Promise.race([request, timeout]).finally(() => clearTimeout(timer))
+    if (key && inFlight.size < MAX_IN_FLIGHT) {
+      inFlight.set(key, pending)
+      // Handle both outcomes; using an ignored finally would create a rejection.
+      const remove = () => {
+        if (inFlight.get(key) === pending)
+          inFlight.delete(key)
+      }
+      pending.then(remove, remove)
+    }
   }
-  catch (e) {
-    console.error(e)
-  }
+  const result = await pending
+  if (afterHandle.includes(sendResponseHandler) && sendResponse)
+    return sendResponse(result)
+  return result
 }
 
 export {

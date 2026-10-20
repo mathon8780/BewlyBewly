@@ -19,9 +19,9 @@ import MorePop from './components/MorePop.vue'
 import NotificationsPop from './components/NotificationsPop.vue'
 import UploadPop from './components/UploadPop.vue'
 import WatchLaterPop from './components/WatchLaterPop.vue'
-import { updateInterval } from './notify'
 import OldUserPanelPop from './oldTopBarComponents/OldUserPanelPop.vue'
 import type { UnReadDm, UnReadMessage, UserInfo } from './types'
+import { useTopBarPolling } from './useTopBarPolling'
 
 // import { useTopBarStore } from '~/stores/topBarStore'
 
@@ -45,6 +45,9 @@ const { isOutside: isOutsideTopBar } = useMouseInElement(headerTarget)
 // initially, assume the user is logged in cuz data retrieval is slow, which may show the login
 // button even after login. if the user is not logged in, the login button will show up later
 const isLogin = ref<boolean>(true)
+let unreadLoading = false
+let momentsLoading = false
+const { isActive, isAlive } = useTopBarPolling(getUserInfo, () => Promise.all([getUnreadMessageCount(), getTopBarNewMomentsCount()]))
 
 const logo = ref<HTMLElement>() as Ref<HTMLElement>
 const avatarImg = ref<HTMLImageElement>() as Ref<HTMLImageElement>
@@ -293,15 +296,13 @@ watch(activatedPage, () => {
 })
 
 onMounted(() => {
-  initData()
   nextTick(() => {
+    if (!isAlive())
+      return
     toggleTopBarVisible(true)
 
-    emitter.off(OVERLAY_SCROLL_BAR_SCROLL)
     if (isHomePage() && !settings.value.useOriginalBilibiliHomepage) {
-      emitter.on(OVERLAY_SCROLL_BAR_SCROLL, () => {
-        handleScroll()
-      })
+      emitter.on(OVERLAY_SCROLL_BAR_SCROLL, handleScroll)
     }
     else {
       window.addEventListener('scroll', handleScroll)
@@ -311,18 +312,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
-  emitter.off(OVERLAY_SCROLL_BAR_SCROLL)
+  emitter.off(OVERLAY_SCROLL_BAR_SCROLL, handleScroll)
 })
-
-async function initData() {
-  await getUserInfo()
-
-  // automatically update notifications and moments count
-  setInterval(() => {
-    getUnreadMessageCount()
-    getTopBarNewMomentsCount()
-  }, updateInterval)
-}
 
 function handleScroll() {
   if (isHomePage() && !settings.value.useOriginalBilibiliHomepage) {
@@ -350,6 +341,8 @@ function handleScroll() {
 async function getUserInfo() {
   try {
     const res = await api.user.getUserInfo()
+    if (!isAlive())
+      return
 
     if (res.code === 0) {
       isLogin.value = true
@@ -361,6 +354,8 @@ async function getUserInfo() {
     }
   }
   catch (error) {
+    if (!isAlive())
+      return
     isLogin.value = false
     console.error(error)
   }
@@ -374,14 +369,17 @@ const unReadDm = reactive<UnReadDm>({} as UnwrapNestedRefs<UnReadDm>)
 const unReadMessageCount = ref<number>(0)
 
 async function getUnreadMessageCount() {
-  if (!isLogin.value)
+  if (!isActive() || !isLogin.value || unreadLoading)
     return
 
+  unreadLoading = true
   let result = 0
 
   try {
     let res
     res = await api.notification.getUnreadMsg()
+    if (!isActive())
+      return
     if (res.code === 0) {
       Object.assign(unReadMessage, res.data)
       Object.entries(unReadMessage).forEach(([key, value]) => {
@@ -393,6 +391,8 @@ async function getUnreadMessageCount() {
     }
 
     res = await api.notification.getUnreadDm()
+    if (!isActive())
+      return
     if (res.code === 0) {
       Object.assign(unReadDm, res.data)
       if (typeof unReadDm.follow_unread === 'number')
@@ -403,7 +403,9 @@ async function getUnreadMessageCount() {
     console.error(error)
   }
   finally {
-    unReadMessageCount.value = result
+    unreadLoading = false
+    if (isActive())
+      unReadMessageCount.value = result
   }
 }
 // #endregion
@@ -412,9 +414,10 @@ async function getUnreadMessageCount() {
 const newMomentsCount = ref<number>(0)
 
 async function getTopBarNewMomentsCount() {
-  if (!isLogin.value)
+  if (!isActive() || !isLogin.value || momentsLoading)
     return
 
+  momentsLoading = true
   let result = 0
 
   try {
@@ -424,8 +427,13 @@ async function getTopBarNewMomentsCount() {
         result = res.data.update_info.item.count
     }
   }
+  catch (error) {
+    console.error(error)
+  }
   finally {
-    newMomentsCount.value = result
+    momentsLoading = false
+    if (isActive())
+      newMomentsCount.value = result
   }
 }
 // #endregion

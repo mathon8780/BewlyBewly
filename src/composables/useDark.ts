@@ -1,105 +1,74 @@
-import { usePreferredDark } from '@vueuse/core'
+import { computed, effectScope, nextTick, readonly, ref, watch } from 'vue'
 
 import { settings } from '~/logic'
 import { runWhenIdle } from '~/utils/lazyLoad'
 import { setCookie } from '~/utils/main'
-import { executeTimes } from '~/utils/timer'
+
+// Components consume these shared refs without adding document-wide effects.
+const preferredDark = ref(false)
+const currentSystemColorScheme = computed(() => preferredDark.value ? 'dark' : 'light')
+const currentAppColorScheme = computed(() => settings.value.theme === 'auto' ? currentSystemColorScheme.value : settings.value.theme)
+const isDark = computed(() => currentAppColorScheme.value === 'dark')
+let disposeTheme: (() => void) | undefined
+
+/** One owner per document; its disposer cancels every compatibility retry. */
+export function initializeDarkTheme() {
+  if (disposeTheme)
+    return disposeTheme
+  const scope = effectScope(true)
+  const media = window.matchMedia('(prefers-color-scheme: dark)')
+  preferredDark.value = media.matches
+  const onChange = () => {
+    preferredDark.value = media.matches
+  }
+  media.addEventListener('change', onChange)
+  let timer: ReturnType<typeof setInterval> | undefined
+  let idle: ReturnType<typeof runWhenIdle> | undefined
+  let disposed = false
+  scope.run(() => {
+    watch(isDark, (dark) => {
+      clearInterval(timer)
+      idle?.dispose()
+      const scheme = dark ? 'dark' : 'light'
+      document.querySelector('#bewly')?.classList.toggle('dark', dark)
+      document.documentElement.classList.toggle('dark', dark)
+      // Preserve the existing compatibility policy for Bilibili's partial theme.
+      document.documentElement.classList.remove('bili_dark')
+      void nextTick(() => {
+        if (!disposed)
+          document.body?.classList.toggle('dark', dark)
+      })
+      setCookie('theme_style', scheme, 365 * 10)
+      const dispatch = () => window.dispatchEvent(new CustomEvent('global.themeChange', { detail: scheme }))
+      dispatch()
+      idle = runWhenIdle(() => {
+        let retries = 0
+        timer = setInterval(() => {
+          dispatch()
+          if (++retries >= 10)
+            clearInterval(timer)
+        }, 500)
+      })
+    }, { immediate: true })
+  })
+  disposeTheme = () => {
+    disposed = true
+    clearInterval(timer)
+    idle?.dispose()
+    scope.stop()
+    media.removeEventListener('change', onChange)
+    disposeTheme = undefined
+  }
+  return disposeTheme
+}
 
 export function useDark() {
-  const isPreferredDark = usePreferredDark()
-  const currentSystemColorScheme = computed(() => isPreferredDark.value ? 'dark' : 'light')
-  const currentAppColorScheme = computed((): 'dark' | 'light' => {
-    if (settings.value.theme !== 'auto')
-      return settings.value.theme
-    else
-      return currentSystemColorScheme.value
-  })
-  const isDark = computed(() => currentAppColorScheme.value === 'dark')
-  let themeChangeTimer: NodeJS.Timeout | null = null
-
-  // Watch for changes in the 'settings.value.theme' variable and add the 'dark' class to the 'mainApp' element
-  // to prevent some Unocss dark-specific styles from failing to take effect
-  watch(
-    () => [settings.value.theme, isPreferredDark.value],
-    () => {
-      setAppAppearance()
-    },
-    { immediate: true },
-  )
-
-  // use watchEffect instead of onMounted because onMounted is only aviailable in setup function
-  watchEffect(() => {
-    // Because some shadow dom may not be loaded when the page has already loaded, we need to wait until the page is idle
-    runWhenIdle(() => {
-      if (isDark.value) {
-        setCookie('theme_style', 'dark', 365 * 10)
-        // TODO: find a better way implement this
-        themeChangeTimer = executeTimes(() => {
-          window.dispatchEvent(new CustomEvent('global.themeChange', { detail: 'dark' }))
-        }, 10, 500)
-      }
-      else {
-        setCookie('theme_style', 'light', 365 * 10)
-        themeChangeTimer = executeTimes(() => {
-          window.dispatchEvent(new CustomEvent('global.themeChange', { detail: 'light' }))
-        }, 10, 500)
-      }
-    })
-  })
-
-  /**
-   * Watch for changes in the 'settings.value.theme' variable and add the 'dark' class to the 'mainApp' element
-   * to prevent some Unocss dark-specific styles from failing to take effect
-   */
-  function setAppAppearance() {
-    if (themeChangeTimer)
-      clearInterval(themeChangeTimer)
-
-    if (isDark.value) {
-      document.querySelector('#bewly')?.classList.add('dark')
-      document.documentElement.classList.add('dark')
-      nextTick(() => {
-        document.body?.classList.add('dark')
-      })
-      // bili_dark is bilibili's official dark mode class
-      document.documentElement.classList.add('bili_dark')
-
-      setCookie('theme_style', 'dark', 365 * 10)
-      window.dispatchEvent(new CustomEvent('global.themeChange', { detail: 'dark' }))
-    }
-    else {
-      document.querySelector('#bewly')?.classList?.remove('dark')
-      document.documentElement.classList.remove('dark')
-      nextTick(() => {
-        document.body?.classList.remove('dark')
-      })
-      document.documentElement.classList.remove('bili_dark')
-
-      setCookie('theme_style', 'light', 365 * 10)
-      window.dispatchEvent(new CustomEvent('global.themeChange', { detail: 'light' }))
-    }
-
-    // Only used as a temporary solution, which will eventually be removed
-    // It seems like Bilibili already supports dark mode when the `bili_dark` class is added to the `html` element
-    // but it's not yet fully refined.
-    if (currentAppColorScheme.value === 'dark') {
-      if (document.documentElement.classList.contains('bili_dark')) {
-        document.documentElement.classList.remove('bili_dark')
-      }
-    }
-    // else {
-    //   if (!document.documentElement.classList.contains('bili_dark')) {
-    //     document.documentElement.classList.add('bili_dark')
-    //   }
-    // }
-  }
-
   function toggleDark(e: MouseEvent) {
     const updateThemeSettings = () => {
       if (currentAppColorScheme.value !== currentSystemColorScheme.value)
         settings.value.theme = 'auto'
       else
-        settings.value.theme = isPreferredDark.value ? 'light' : 'dark'
+        settings.value.theme = preferredDark.value ? 'light' : 'dark'
     }
 
     const isAppearanceTransition = typeof document !== 'undefined'
@@ -134,8 +103,11 @@ export function useDark() {
 
       const bewlyShadowRoot = document.getElementById('bewly')?.shadowRoot
       const bewlyWrapper = bewlyShadowRoot?.getElementById('bewly-wrapper')
-      if (!bewlyWrapper)
-        throw new Error('mainAppRef is not found')
+      if (!bewlyWrapper) {
+        style.remove()
+        updateThemeSettings()
+        return
+      }
 
       bewlyWrapper.appendChild(shadowDomStyle)
 
@@ -145,6 +117,11 @@ export function useDark() {
         await nextTick()
       })
 
+      const cleanupStyles = () => {
+        style.remove()
+        shadowDomStyle.remove()
+      }
+      transition.finished.then(cleanupStyles, cleanupStyles)
       transition.ready.then(() => {
         const clipPath = [
               `circle(0px at ${x}px ${y}px)`,
@@ -165,15 +142,14 @@ export function useDark() {
           },
         )
         animation.addEventListener('finish', () => {
-          document.head.removeChild(style!)
-          bewlyWrapper.removeChild(shadowDomStyle!)
+          cleanupStyles()
         }, { once: true })
-      })
+      }).catch(cleanupStyles)
     }
   }
 
   return {
-    isDark,
+    isDark: readonly(isDark),
     toggleDark,
   }
 }

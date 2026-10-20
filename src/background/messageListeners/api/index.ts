@@ -39,11 +39,7 @@ const FullAPI = Object.assign({}, ...API_COLLECTION)
 const handleMessage = apiListenerFactory(FullAPI)
 
 export function setupApiMsgLstnrs() {
-  browser.runtime.onConnect.removeListener(handleConnect)
-  browser.runtime.onConnect.addListener(handleConnect)
-}
-
-function handleConnect() {
+  // MV3 workers must register during startup, before the first message arrives.
   browser.runtime.onMessage.removeListener(handleMessage)
   browser.runtime.onMessage.addListener(handleMessage)
 }

@@ -25,17 +25,16 @@ const activatedMenuItem = ref<MenuType>(MenuType.General)
 const title = ref<string>(t('settings.title'))
 const settingsWindow = ref<HTMLDivElement>()
 
-useEventListener(window, 'resize', () => {
-  createTransformer(settingsWindow, {
-    x: '50%',
-    y: '50%',
-    notrigger: true,
-    centerTarget: {
-      x: true,
-      y: true,
-    },
-  })
+const settingsTransformer = createTransformer(settingsWindow, {
+  x: '50%',
+  y: '50%',
+  notrigger: true,
+  centerTarget: {
+    x: true,
+    y: true,
+  },
 })
+useEventListener(window, 'resize', settingsTransformer.update)
 
 const scrollbarRef = ref()
 

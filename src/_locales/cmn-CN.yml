@@ -1,4 +1,6 @@
 common:
+  continue_browsing: 继续浏览下一组
+  retry: 重试
   view_all: 查看更多
   play_all: 播放全部
   loading: 加载中...

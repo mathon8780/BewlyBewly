@@ -288,9 +288,9 @@ async function haveScrollbar() {
 }
 
 // In drawer video, watch btn className changed and post message to parent
-watchEffect(async (onCleanUp) => {
-  if (!isInIframe())
-    return null
+watchEffect((onCleanUp) => {
+  if (!isInIframe() || !isVideoOrBangumiPage())
+    return
 
   const observer = new MutationObserver(([{ target: el }]) => {
     if (!(el instanceof HTMLElement))
@@ -305,7 +305,7 @@ watchEffect(async (onCleanUp) => {
 
   const abort = new AbortController()
   queryDomUntilFound('.bpx-player-ctrl-btn.bpx-player-ctrl-web', 500, abort).then((openVideo2WebFullBtn) => {
-    if (!openVideo2WebFullBtn)
+    if (abort.signal.aborted || !openVideo2WebFullBtn)
       return
     observer.observe(openVideo2WebFullBtn, { attributes: true })
   })

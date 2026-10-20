@@ -2,7 +2,9 @@
 import { useI18n } from 'vue-i18n'
 
 import type { FavoriteCategory, FavoriteResource } from '~/components/TopBar/types'
+import VirtualFeed from '~/components/VirtualFeed.vue'
 import { useBewlyApp } from '~/composables/useAppProvider'
+import { useWindowedFeed } from '~/composables/useWindowedFeed'
 import { TOP_BAR_VISIBILITY_CHANGE } from '~/constants/globalEvents'
 import { settings } from '~/logic'
 import type { FavoritesResult, Media as FavoriteItem } from '~/models/video/favorite'
@@ -13,147 +15,113 @@ import emitter from '~/utils/mitt'
 
 const { t } = useI18n()
 
-const favoriteCategories = reactive<CategoryItem[]>([])
-const favoriteResources = reactive<FavoriteItem[]>([])
-const categoryOptions = reactive<Array<{ value: any, label: string }>>([])
-
+const favoriteCategories = shallowRef<CategoryItem[]>([])
+const categoryOptions = computed(() => favoriteCategories.value.map(item => ({ label: item.title, value: item })))
 const selectedCategory = ref<FavoriteCategory>()
-const activatedCategoryCover = ref<string>('')
+const activatedCategoryCover = ref('')
+const shouldMoveCtrlBarUp = ref(false)
+const keyword = ref('')
+const categoriesLoading = ref(false)
+const categoriesFailed = ref(false)
+const { handleBackToTop } = useBewlyApp()
+let currentPageNum = 1
+let query = ''
+let alive = true
+let categoryGeneration = 0
 
-const shouldMoveCtrlBarUp = ref<boolean>(false)
-const currentPageNum = ref<number>(1)
-const keyword = ref<string>('')
-const { handlePageRefresh, handleReachBottom, haveScrollbar } = useBewlyApp()
-const isLoading = ref<boolean>(false)
-const isFullPageLoading = ref<boolean>(false)
-const noMoreContent = ref<boolean>(false)
+const {
+  items: favoriteResources,
+  isLoading,
+  noMoreContent,
+  loadFailed,
+  windowFull,
+  load,
+  reset,
+  continueWindow,
+} = useWindowedFeed<FavoriteItem>({
+  key: item => `${item.type}:${item.id}`,
+  scrollTarget: () => 0,
+  beforeLoading: () => {},
+  afterLoading: () => {},
+  resetCursor: () => { currentPageNum = 1 },
+  loadPage: async (current) => {
+    const category = selectedCategory.value
+    if (!category)
+      return { items: [], done: true }
+    const res: FavoritesResult = await api.favorite.getFavoriteResources({
+      media_id: category.id,
+      pn: currentPageNum,
+      keyword: query,
+    })
+    if (!current())
+      return { items: [], done: true }
+    if (res.code !== 0)
+      throw new Error(res.message)
+    currentPageNum++
+    activatedCategoryCover.value = res.data.info.cover
+    const items = res.data.medias ?? []
+    return { items, done: !items.length || res.data.has_more === false }
+  },
+})
+const isFullPageLoading = computed(() => categoriesLoading.value || (isLoading.value && !favoriteResources.value.length))
+
+function handleTopBarVisibility(val: boolean) {
+  shouldMoveCtrlBarUp.value = settings.value.autoHideTopBar && settings.value.showTopBar && !val
+}
 
 onMounted(() => {
-  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
-  emitter.on(TOP_BAR_VISIBILITY_CHANGE, (val) => {
-    shouldMoveCtrlBarUp.value = false
-
-    // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
-    // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
-    // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
-    if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-      if (val)
-        shouldMoveCtrlBarUp.value = false
-
-      else
-        shouldMoveCtrlBarUp.value = true
-    }
-  })
-
-  initPageAction()
-  initData()
+  emitter.on(TOP_BAR_VISIBILITY_CHANGE, handleTopBarVisibility)
+  void initData()
+})
+onBeforeUnmount(() => {
+  alive = false
+  categoryGeneration++
+  emitter.off(TOP_BAR_VISIBILITY_CHANGE, handleTopBarVisibility)
 })
 
 async function initData() {
-  await getFavoriteCategories()
-  changeCategory(favoriteCategories[0])
-}
-
-onUnmounted(() => {
-  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
-})
-
-function initPageAction() {
-  handleReachBottom.value = async () => {
-    if (isLoading.value)
-      return
-    if (noMoreContent.value)
-      return
-
-    await getFavoriteResources(selectedCategory.value!.id, ++currentPageNum.value, keyword.value)
-  }
-
-  handlePageRefresh.value = () => {
-    if (isLoading.value)
-      return
-    favoriteResources.length = 0
-    currentPageNum.value = 1
-    noMoreContent.value = false
-    handleSearch()
-  }
-}
-
-async function getFavoriteCategories() {
-  await api.favorite.getFavoriteCategories({
-    up_mid: getUserID(),
-  })
-    .then((res: FavoritesCategoryResult) => {
-      if (res.code === 0) {
-        Object.assign(favoriteCategories, res.data.list)
-
-        categoryOptions.length = 0
-        favoriteCategories.forEach((item) => {
-          categoryOptions.push({
-            label: item.title,
-            value: item,
-          })
-        })
-      }
-    })
-}
-
-/**
- * Get favorite video resources
- * @param media_id
- * @param pn
- * @param keyword
- */
-async function getFavoriteResources(
-  media_id: number,
-  pn: number,
-  keyword = '' as string,
-) {
-  // if (pn === 1)
-  //   isFullPageLoading.value = true
-  isLoading.value = true
+  const token = ++categoryGeneration
+  categoriesLoading.value = true
+  categoriesFailed.value = false
   try {
-    const res: FavoritesResult = await api.favorite.getFavoriteResources({
-      media_id,
-      pn,
-      keyword,
-    })
-
-    if (res.code === 0) {
-      activatedCategoryCover.value = res.data.info.cover
-
-      if (Array.isArray(res.data.medias) && res.data.medias.length > 0)
-        favoriteResources.push(...res.data.medias)
-
-      if (!res.data.medias)
-        noMoreContent.value = true
-
-      if (!await haveScrollbar() && !noMoreContent.value)
-        await getFavoriteResources(selectedCategory.value!.id, ++currentPageNum.value, keyword)
+    const res: FavoritesCategoryResult = await api.favorite.getFavoriteCategories({ up_mid: getUserID() })
+    if (!alive || token !== categoryGeneration)
+      return
+    if (res.code !== 0)
+      throw new Error(res.message)
+    favoriteCategories.value = res.data?.list ?? []
+    const category = favoriteCategories.value.find(item => item.id === selectedCategory.value?.id) ?? favoriteCategories.value[0]
+    if (category) {
+      await changeCategory(category)
+    }
+    else {
+      selectedCategory.value = undefined
+      await reset()
     }
   }
+  catch {
+    if (alive && token === categoryGeneration)
+      categoriesFailed.value = true
+  }
   finally {
-    isLoading.value = false
-    // isFullPageLoading.value = false
+    if (alive && token === categoryGeneration)
+      categoriesLoading.value = false
   }
 }
 
 async function changeCategory(categoryItem: FavoriteCategory) {
-  if (isLoading.value)
-    return
-  currentPageNum.value = 1
   selectedCategory.value = categoryItem
-  favoriteResources.length = 0
-  noMoreContent.value = false
-
-  getFavoriteResources(categoryItem.id, 1)
+  activatedCategoryCover.value = ''
+  query = ''
+  keyword.value = ''
+  handleBackToTop()
+  await reset()
 }
 
 function handleSearch() {
-  currentPageNum.value = 1
-  favoriteResources.length = 0
-  noMoreContent.value = false
-
-  getFavoriteResources(selectedCategory.value!.id, currentPageNum.value, keyword.value)
+  query = keyword.value.trim()
+  handleBackToTop()
+  void reset()
 }
 
 function handlePlayAll() {
@@ -165,19 +133,17 @@ function jumpToLoginPage() {
 }
 
 function handleUnfavorite(favoriteResource: FavoriteResource) {
-  const result = confirm(
-    t('favorites.unfavorite_confirm'),
-  )
-  if (result) {
-    api.favorite.patchDelFavoriteResources({
-      resources: `${favoriteResource.id}:${favoriteResource.type}`,
-      media_id: selectedCategory.value?.id,
-      csrf: getCSRF(),
-    }).then((res) => {
-      if (res.code === 0)
-        favoriteResources.splice(favoriteResources.indexOf(favoriteResource as FavoriteItem), 1)
-    })
-  }
+  if (!confirm(t('favorites.unfavorite_confirm')))
+    return
+  const category = selectedCategory.value?.id
+  api.favorite.patchDelFavoriteResources({
+    resources: `${favoriteResource.id}:${favoriteResource.type}`,
+    media_id: category,
+    csrf: getCSRF(),
+  }).then((res) => {
+    if (alive && res.code === 0 && selectedCategory.value?.id === category)
+      favoriteResources.value = favoriteResources.value.filter(item => item.id !== favoriteResource.id || item.type !== favoriteResource.type)
+  })
 }
 
 function isMusic(item: FavoriteResource) {
@@ -210,17 +176,22 @@ function isMusic(item: FavoriteResource) {
           {{ selectedCategory?.title }}
         </h3> -->
       </div>
-      <Empty v-if="favoriteResources.length === 0 && !isLoading" m="t-55px b-6" />
+      <Button v-if="categoriesFailed" class="mt-55px" @click="initData">
+        {{ $t('common.retry') }}
+      </Button>
+      <Button v-else-if="loadFailed" class="mt-55px" @click="load">
+        {{ $t('common.retry') }}
+      </Button>
+      <Empty v-if="favoriteResources.length === 0 && !isFullPageLoading" m="t-55px b-6" />
       <template v-else>
         <Transition name="fade">
           <Loading v-if="isFullPageLoading" w-full h-full pos="absolute top-0 left-0" mt--50px />
         </Transition>
         <!-- favorite list -->
-        <div grid="~ 2xl:cols-4 xl:cols-3 lg:cols-2 md:cols-1 sm:cols-1 cols-1 gap-5" m="t-55px b-6">
-          <TransitionGroup name="list">
+        <VirtualFeed :items="favoriteResources" :item-key="item => `${item.type}:${item.id}`" layout="adaptive" :column-offset="1" m="t-55px b-6">
+          <template #default="{ item, index }">
             <VideoCard
-              v-for="item in favoriteResources"
-              :key="item.id"
+              :cover-loading="index < 8 ? 'eager' : 'lazy'"
               :video="{
                 id: item.id,
                 duration: item.duration,
@@ -253,9 +224,12 @@ function isMusic(item: FavoriteResource) {
                 </button>
               </template>
             </VideoCard>
-          </TransitionGroup>
-        </div>
+          </template>
+        </VirtualFeed>
 
+        <Button v-if="windowFull" class="my-4" @click="continueWindow">
+          {{ $t('common.continue_browsing') }}
+        </Button>
         <!-- no more content -->
         <Empty v-if="noMoreContent" class="py-4" :description="$t('common.no_more_content')" />
 
@@ -340,7 +314,7 @@ function isMusic(item: FavoriteResource) {
               border-b="1 color-[rgba(255,255,255,.2)]"
               lh-30px px-4 cursor-pointer hover:bg="[rgba(255,255,255,.35)]"
               duration-300 color-white flex justify-between
-              :style="{ background: item.id === selectedCategory?.id ? 'rgba(255,255,255,.35)' : '', pointerEvents: isFullPageLoading ? 'none' : 'auto' }"
+              :style="{ background: item.id === selectedCategory?.id ? 'rgba(255,255,255,.35)' : '', pointerEvents: 'auto' }"
               @click="changeCategory(item)"
             >
               <span>{{ item.title }}</span> <span ml-2 color-white color-opacity-60>{{ item.media_count }}</span>

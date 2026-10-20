@@ -292,22 +292,36 @@ export function compareVersions(version1: string, version2: string): number {
   return 0 // Versions are equal
 }
 
-export function queryDomUntilFound(selector: string, timeout = 500, abort?: AbortController): Promise<HTMLElement | null> {
+/** Query immediately, then poll only until cancelled or the total deadline expires. */
+export function queryDomUntilFound(selector: string, interval = 500, abort?: AbortController, deadline = 10_000): Promise<HTMLElement | null> {
   return new Promise((resolve) => {
-    const interval = setInterval(() => {
-      const element = document.querySelector(selector)
-      if (element) {
-        clearInterval(interval)
-        resolve(element as HTMLElement)
-      }
-    }, timeout)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expiresAt = Date.now() + Math.max(0, deadline)
 
-    if (abort) {
-      abort.signal.addEventListener('abort', () => {
-        clearInterval(interval)
-        resolve(null)
-      })
+    function finish(element: HTMLElement | null) {
+      clearTimeout(timer)
+      abort?.signal.removeEventListener('abort', cancel)
+      resolve(element)
     }
+
+    function cancel() {
+      finish(null)
+    }
+
+    function query() {
+      if (abort?.signal.aborted)
+        return finish(null)
+      const element = document.querySelector<HTMLElement>(selector)
+      if (element)
+        return finish(element)
+      const remaining = expiresAt - Date.now()
+      if (remaining <= 0)
+        return finish(null)
+      timer = setTimeout(query, Math.min(Math.max(1, interval), remaining))
+    }
+
+    abort?.signal.addEventListener('abort', cancel, { once: true })
+    query()
   })
 }
 

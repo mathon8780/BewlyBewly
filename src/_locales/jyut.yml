@@ -1,4 +1,6 @@
 common:
+  continue_browsing: 繼續睇下一組
+  retry: 再試
   view_all: 睇晒佢哋
   play_all: 播晒佢哋
   loading: 撈緊...

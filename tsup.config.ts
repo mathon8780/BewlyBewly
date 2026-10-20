@@ -20,6 +20,8 @@ export default defineConfig(() => ({
   target: 'esnext',
   ignoreWatch: ['**/extension/**', '**/extension-firefox/**', '**/extension-safari/**'],
   splitting: false,
+  // The classic extension worker cannot resolve bare npm imports.
+  noExternal: ['md5'],
   sourcemap: false, // https://github.com/vitejs/vite-plugin-vue/issues/35
   define: {
     '__DEV__': JSON.stringify(isDev),

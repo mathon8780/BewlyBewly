@@ -5,9 +5,8 @@ import { useToast } from 'vue-toastification'
 
 import Button from '~/components/Button.vue'
 import { useBewlyApp } from '~/composables/useAppProvider'
+import { useVideoCardState } from '~/composables/useVideoCardState'
 import { accessKey, settings } from '~/logic'
-import type { VideoInfo } from '~/models/video/videoInfo'
-import type { VideoPreviewResult } from '~/models/video/videoPreview'
 import { useMainStore } from '~/stores/mainStore'
 import api from '~/utils/api'
 import { getTvSign, TVAppKey } from '~/utils/authProvider'
@@ -15,6 +14,7 @@ import { calcCurrentTime, calcTimeSince, numFormatter } from '~/utils/dataFormat
 import { getCSRF, removeHttpFromUrl } from '~/utils/main'
 
 import Tooltip from '../Tooltip.vue'
+import { getPreviewUrl } from './preview'
 import type { Video } from './types'
 import { getCurrentTime, getCurrentVideoUrl } from './utils'
 import VideoCardAuthorAvatar from './VideoCardAuthor/components/VideoCardAuthorAvatar.vue'
@@ -26,9 +26,11 @@ const props = withDefaults(defineProps<Props>(), {
   showWatcherLater: true,
   type: 'common',
   moreBtn: true,
+  coverLoading: 'lazy',
 })
 
 interface Props {
+  coverLoading?: 'eager' | 'lazy'
   skeleton?: boolean
   video?: Video
   /** rcmd: recommend video; appRcmd: app recommend video; bangumi: bangumi video; common: common video */
@@ -46,12 +48,19 @@ const { setActivatedCover } = useMainStore()
 const showVideoOptions = ref<boolean>(false)
 const videoOptionsFloatingStyles = ref<CSSProperties>({})
 // Whether the user has marked it as disliked
-const removed = ref<boolean>(false)
+const cardState = useVideoCardState(() => props.video)
+const removed = computed({
+  get: () => cardState.value.removed,
+  set: value => cardState.value.removed = value,
+})
 
 const moreBtnRef = ref<HTMLDivElement | null>(null)
 const contextMenuRef = ref<HTMLDivElement | null>(null)
 
-const selectedDislikeOpt = ref<{ dislikeReasonId: number }>()
+const selectedDislikeOpt = computed({
+  get: () => cardState.value.selectedDislikeOpt,
+  set: value => cardState.value.selectedDislikeOpt = value,
+})
 
 const videoCurrentTime = ref<number | null>(null)
 
@@ -71,7 +80,10 @@ const videoUrl = computed(() => {
     return ''
 })
 
-const isInWatchLater = ref<boolean>(false)
+const isInWatchLater = computed({
+  get: () => cardState.value.isInWatchLater,
+  set: value => cardState.value.isInWatchLater = value,
+})
 const isHover = ref<boolean>(false)
 const mouseEnterTimeOut = ref()
 const mouseLeaveTimeOut = ref()
@@ -79,38 +91,47 @@ const previewVideoUrl = ref<string>('')
 const contentVisibility = ref<'auto' | 'visible'>('auto')
 const videoElement = ref<HTMLVideoElement | null>(null)
 
-watch(() => isHover.value, async (newValue) => {
-  if (!props.video || !newValue)
+let previewGeneration = 0
+let alive = true
+
+watch([isHover, () => props.video?.bvid, () => props.video?.aid, () => props.video?.cid], async () => {
+  const generation = ++previewGeneration
+  const video = props.video
+  if (!alive || !video || !isHover.value || !props.showPreview || !settings.value.enableVideoPreview
+    || previewVideoUrl.value || !(video.aid || video.bvid)) {
     return
-
-  if (props.showPreview && settings.value.enableVideoPreview
-    && !previewVideoUrl.value && (props.video.aid || props.video.bvid)) {
-    let cid = props.video.cid
-    if (!cid) {
-      try {
-        const res: VideoInfo = await api.video.getVideoInfo({
-          bvid: props.video.bvid,
-        })
-        if (res.code === 0)
-          cid = res.data.cid
-      }
-      catch {
-
-      }
-    }
-    api.video.getVideoPreview({
-      bvid: props.video.bvid,
-      cid,
-    }).then((res: VideoPreviewResult) => {
-      if (res.code === 0)
-        previewVideoUrl.value = res.data.durl[0].url
-    })
   }
+  try {
+    const url = await getPreviewUrl(video)
+    if (alive && isHover.value && generation === previewGeneration)
+      previewVideoUrl.value = url
+  }
+  catch {
+    // Preview is optional; a later hover can retry a failed or timed-out request.
+  }
+})
+watch([() => props.video?.bvid, () => props.video?.aid, () => props.video?.id], () => {
+  previewVideoUrl.value = ''
+  handelMouseLeave()
+})
+
+function stopPreview() {
+  previewGeneration++
+  clearTimeout(mouseEnterTimeOut.value)
+  clearTimeout(mouseLeaveTimeOut.value)
+  isHover.value = false
+  videoElement.value?.pause()
+}
+onDeactivated(stopPreview)
+onBeforeUnmount(() => {
+  alive = false
+  stopPreview()
 })
 
 function toggleWatchLater() {
   if (!props.video)
     return
+  const state = cardState.value
 
   if (!isInWatchLater.value) {
     api.watchlater.saveToWatchLater({
@@ -119,7 +140,7 @@ function toggleWatchLater() {
     })
       .then((res) => {
         if (res.code === 0)
-          isInWatchLater.value = true
+          state.isInWatchLater = true
         else
           toast.error(res.message)
       })
@@ -131,7 +152,7 @@ function toggleWatchLater() {
     })
       .then((res) => {
         if (res.code === 0)
-          isInWatchLater.value = false
+          state.isInWatchLater = false
         else
           toast.error(res.message)
       })
@@ -139,6 +160,7 @@ function toggleWatchLater() {
 }
 
 function handleMouseEnter() {
+  clearTimeout(mouseEnterTimeOut.value)
   props.video && setActivatedCover(`${removeHttpFromUrl(props.video.cover)}@672w_378h_1c_!web-home-common-cover`)
 
   // fix #789
@@ -158,6 +180,7 @@ function handleMouseEnter() {
 }
 
 function handelMouseLeave() {
+  previewGeneration++
   contentVisibility.value = 'auto'
   isHover.value = false
   clearTimeout(mouseEnterTimeOut.value)
@@ -196,6 +219,7 @@ function handleMoreBtnClick(event: MouseEvent) {
 }
 
 function handleUndo() {
+  const state = cardState.value
   if (props.type === 'appRcmd') {
     const params = {
       access_key: accessKey.value,
@@ -215,7 +239,7 @@ function handleUndo() {
       sign: getTvSign(params),
     }).then((res) => {
       if (res.code === 0) {
-        removed.value = false
+        state.removed = false
       }
       else {
         toast.error(res.message)
@@ -223,7 +247,7 @@ function handleUndo() {
     })
   }
   else {
-    removed.value = false
+    state.removed = false
   }
 }
 
@@ -274,7 +298,7 @@ provide('getVideoType', () => props.type!)
             <!-- Video cover -->
             <Picture
               :src="`${removeHttpFromUrl(video.cover)}@672w_378h_1c_!web-home-common-cover`"
-              loading="eager"
+              :loading="coverLoading"
               w="full" max-w-full align-middle aspect-video object-cover
               rounded="$bew-radius"
             />

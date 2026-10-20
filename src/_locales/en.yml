@@ -1,4 +1,6 @@
 common:
+  continue_browsing: Continue with next group
+  retry: Try again
   view_all: View ALL
   play_all: Play ALL
   loading: Loading...

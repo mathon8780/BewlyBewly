@@ -104,14 +104,8 @@ export function createTransformer(trigger: Ref<MaybeElement>, transformer: Trans
   // v-show
   const targetVisibility = useElementVisibility(() => unrefElement(target))
   watch(targetVisibility, (visible) => {
-    if (visible) {
-      const targetElement = unrefElement(target)
-      if (targetElement) {
-        update()
-        const style = targetElement.getAttribute('style')
-        targetElement.setAttribute('style', generateStyle(style))
-      }
-    }
+    if (visible)
+      refresh()
   }, { flush: 'pre' })
 
   // v-show
@@ -127,13 +121,16 @@ export function createTransformer(trigger: Ref<MaybeElement>, transformer: Trans
   // })
 
   // v-if
-  watch(() => unrefElement(target), (targetElement) => {
+  watch(() => unrefElement(target), refresh, { flush: 'pre', immediate: true })
+
+  function refresh() {
+    const targetElement = unrefElement(target)
     if (targetElement) {
       update()
       const style = targetElement.getAttribute('style')
       targetElement.setAttribute('style', generateStyle(style))
     }
-  }, { flush: 'pre' })
+  }
 
-  return target
+  return Object.assign(target, { update: refresh })
 }

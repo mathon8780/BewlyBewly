@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { WALLPAPERS } from '~/constants/imgs'
 import { settings } from '~/logic'
+import { persistWallpaper } from '~/logic/wallpaperStorage'
 import { compressAndResizeImage } from '~/utils/main'
 
 import SettingsItem from './SettingsItem.vue'
@@ -28,9 +29,9 @@ function changeWallpaperType(type: 'buildIn' | 'byUrl') {
 
   // Set the wallpaper to empty if it's a locally uploaded wallpaper to prevent the `QUOTA_BYTES quota exceeded` error
   if (type === 'byUrl') {
-    if (settings.value.wallpaper.startsWith('data:image/'))
+    if (isGlobal.value && settings.value.wallpaper.startsWith('data:image/'))
       settings.value.wallpaper = ''
-    else if (settings.value.searchPageWallpaper.startsWith('data:image/'))
+    else if (!isGlobal.value && settings.value.searchPageWallpaper.startsWith('data:image/'))
       settings.value.searchPageWallpaper = ''
   }
 }
@@ -50,16 +51,16 @@ function changeWallpaper(url: string) {
 }
 
 function fileToBase64(inputFile: File) {
-  return new Promise((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.readAsDataURL(inputFile)
-    reader.onload = () => resolve(reader.result)
+    reader.onload = () => resolve(reader.result as string)
     reader.onerror = error => reject(error)
   })
 }
 
 function handleUploadWallpaper(e: Event) {
-  if (uploadWallpaperRef.value)
+  if (e.type !== 'change' && uploadWallpaperRef.value)
     (uploadWallpaperRef.value as HTMLInputElement).click()
   const file = (e.target as HTMLInputElement)?.files?.[0]
   if (!file)
@@ -67,12 +68,13 @@ function handleUploadWallpaper(e: Event) {
 
   compressAndResizeImage(file, 2560, 1440, 0.9, (compressedFile: File) => {
     // img to base64 on browser
-    fileToBase64(compressedFile).then((base64) => {
+    fileToBase64(compressedFile).then(async (base64) => {
+      await persistWallpaper(base64)
       // 使用base64字符串
-      changeWallpaper(base64 as string)
+      changeWallpaper(base64)
       settings.value.locallyUploadedWallpaper = {
         name: file.name,
-        url: base64 as string,
+        url: base64,
       }
     }).catch(() => {
       // 处理错误

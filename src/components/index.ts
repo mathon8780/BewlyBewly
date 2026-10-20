@@ -1,13 +1,14 @@
-import type { App, Plugin } from 'vue'
+import type { App, Component, Plugin } from 'vue'
+import { defineAsyncComponent } from 'vue'
 
-const paths: Record<string, { default: Component }> = import.meta.glob(['./*/*.vue', './*.vue', './OverlayScrollbarsComponent.ts'], { eager: true })
+const paths = import.meta.glob<{ default: Component }>(['./*/*.vue', './*.vue', './OverlayScrollbarsComponent.ts'])
 
 export default {
   install: (app: App) => {
     for (const path in paths) {
       const splitPath = path.split('/')
       const name = splitPath[splitPath.length - 1].replace('.vue', '').replace('.ts', '')
-      app.component(name, paths[path].default)
+      app.component(name, defineAsyncComponent(paths[path]))
     }
   },
 } as Plugin

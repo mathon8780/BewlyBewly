@@ -3,6 +3,8 @@ import type { wallpaperItem } from '~/constants/imgs'
 import type { HomeSubPage } from '~/contentScripts/views/Home/types'
 import type { AppPage } from '~/enums/appEnums'
 
+import { needsWallpaperMigration, wallpaperSettingsSerializer } from './wallpaperStorage'
+
 export const storageDemo = useStorageLocal('webext-demo', 'Storage Demo')
 export const accessKey = useStorageLocal('accessKey', '')
 
@@ -215,7 +217,12 @@ export const originalSettings: Settings = {
   useOriginalBilibiliHomepage: false,
 }
 
-export const settings = useStorageLocal('settings', ref<Settings>(originalSettings), { mergeDefaults: true })
+export const settings = useStorageLocal('settings', ref<Settings>(originalSettings), {
+  mergeDefaults: true,
+  debounce: 200,
+  serializer: wallpaperSettingsSerializer,
+  migrate: needsWallpaperMigration,
+})
 
 export type GridLayoutType = 'adaptive' | 'twoColumns' | 'oneColumn'
 
@@ -225,10 +232,13 @@ export interface GridLayout {
 
 export const gridLayout = useStorageLocal('gridLayout', ref<GridLayout>({
   home: 'adaptive',
-}), { mergeDefaults: true })
+}), { mergeDefaults: true, debounce: 200 })
 
 export const sidePanel = useStorageLocal('sidePanel', ref<{
   home: boolean
 }>({
   home: true,
-}), { mergeDefaults: true })
+}), { mergeDefaults: true, debounce: 200 })
+
+// Readiness includes legacy image migration, layout defaults and auth hydration.
+export const settingsReady: Promise<void> = Promise.all([settings.ready, gridLayout.ready, sidePanel.ready, accessKey.ready]).then(() => {})

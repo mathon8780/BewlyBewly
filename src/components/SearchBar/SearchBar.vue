@@ -24,7 +24,18 @@ defineProps<{
 const keywordRef = ref<HTMLInputElement>()
 const isFocus = ref<boolean>(false)
 const keyword = ref<string>('')
-const suggestions = reactive<SuggestionItem[]>([])
+const suggestions = shallowRef<SuggestionItem[]>([])
+let suggestionGeneration = 0
+let disposed = false
+onScopeDispose(() => {
+  disposed = true
+  suggestionGeneration++
+})
+watch(keyword, () => {
+  suggestionGeneration++
+  if (!keyword.value.trim())
+    suggestions.value = []
+}, { flush: 'sync' })
 const selectedIndex = ref<number>(-1)
 const searchHistory = shallowRef<HistoryItem[]>([])
 const historyItemRef = ref<HTMLElement[]>([])
@@ -58,20 +69,25 @@ onKeyStroke('Escape', (e: KeyboardEvent) => {
   isFocus.value = false
 }, { target: keywordRef })
 
-const handleInput = useDebounceFn(() => {
+const handleInput = useDebounceFn(async () => {
+  if (disposed)
+    return
   selectedIndex.value = -1
-  if (keyword.value.trim().length > 0) {
-    api.search.getSearchSuggestion({
-      term: keyword.value,
-    })
-      .then((res: SuggestionResponse) => {
-        if (!res || (res && res.code !== 0))
-          return
-        Object.assign(suggestions, res.result.tag)
-      })
+  const term = keyword.value
+  const generation = ++suggestionGeneration
+  if (!term.trim()) {
+    suggestions.value = []
+    return
   }
-  else {
-    suggestions.length = 0
+  try {
+    const res: SuggestionResponse = await api.search.getSearchSuggestion({ term })
+    if (disposed || generation !== suggestionGeneration || keyword.value !== term)
+      return
+    suggestions.value = res?.code === 0 && Array.isArray(res.result?.tag) ? res.result.tag : []
+  }
+  catch {
+    if (!disposed && generation === suggestionGeneration)
+      suggestions.value = []
   }
 }, 200)
 
@@ -110,8 +126,8 @@ function handleKeyUp(e: KeyboardEvent) {
 
   selectedIndex.value--
 
-  if (isFocus.value && suggestions.length !== 0)
-    keyword.value = suggestions[selectedIndex.value].value
+  if (isFocus.value && suggestions.value.length !== 0)
+    keyword.value = suggestions.value[selectedIndex.value].value
   else if (isFocus.value && searchHistory.value.length !== 0)
     keyword.value = searchHistory.value[selectedIndex.value].value
 
@@ -133,17 +149,20 @@ function handleKeyDown(e: KeyboardEvent) {
   if (e.isComposing)
     return
 
+  if (!suggestions.value.length && !searchHistory.value.length)
+    return
+
   let isShowSuggestion = false
-  if (isFocus.value && suggestions.length !== 0)
+  if (isFocus.value && suggestions.value.length !== 0)
     isShowSuggestion = true
   else if (isFocus.value && !keyword.value && searchHistory.value.length !== 0)
     isShowSuggestion = false
 
   if (
     isShowSuggestion
-    && selectedIndex.value >= suggestions.length - 1
+    && selectedIndex.value >= suggestions.value.length - 1
   ) {
-    selectedIndex.value = suggestions.length - 1
+    selectedIndex.value = suggestions.value.length - 1
     return
   }
   if (
@@ -156,7 +175,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
   selectedIndex.value++
   keyword.value = isShowSuggestion
-    ? suggestions[selectedIndex.value].value
+    ? suggestions.value[selectedIndex.value].value
     : searchHistory.value[selectedIndex.value].value
 
   suggestionItemRef.value.forEach((item, index) => {
