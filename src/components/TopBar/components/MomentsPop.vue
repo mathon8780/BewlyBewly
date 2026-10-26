@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { useEventListener } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 
 import Empty from '~/components/Empty.vue'
@@ -11,7 +12,10 @@ import api from '~/utils/api'
 import { getCSRF, scrollToTop } from '~/utils/main'
 
 type MomentType = 'video' | 'live' | 'article'
-interface MomentTab { type: MomentType, name: any }
+interface MomentTab {
+  type: MomentType
+  name: any
+}
 interface MomentCard {
   type: MomentType
   title: string
@@ -43,10 +47,10 @@ const momentTabs = computed((): MomentTab[] => {
       name: t('topbar.moments_dropdown.tabs.articles'),
     },
   ]
-},
-)
+})
 const selectedMomentTab = ref<MomentTab>(momentTabs.value[0])
-const isLoading = ref<boolean>(false)
+const isLoading = ref(false)
+const loadFailed = ref(false)
 const noMoreContent = ref<boolean>(false) // when noMoreContent is true, the user can't scroll down to load more content
 const livePage = ref<number>(1)
 const momentsWrap = ref()
@@ -54,22 +58,25 @@ const momentUpdateBaseline = ref<string>('')
 const momentOffset = ref<string>('')
 const newMomentsCount = ref<number>(0)
 
-watch(() => selectedMomentTab.value.type, (newVal, oldVal) => {
-  if (newVal === oldVal)
-    return
+watch(
+  () => selectedMomentTab.value.type,
+  (newVal, oldVal) => {
+    if (newVal === oldVal)
+      return
 
-  if (momentsWrap.value)
-    scrollToTop(momentsWrap.value)
+    if (momentsWrap.value)
+      scrollToTop(momentsWrap.value)
 
-  initData()
-}, { immediate: true })
+    initData()
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   if (momentsWrap.value) {
-    momentsWrap.value.addEventListener('scroll', () => {
+    useEventListener(momentsWrap, 'scroll', () => {
       if (
-        momentsWrap.value.clientHeight + momentsWrap.value.scrollTop
-        >= momentsWrap.value.scrollHeight - 20
+        momentsWrap.value.clientHeight + momentsWrap.value.scrollTop >= momentsWrap.value.scrollHeight - 20
         && moments.length > 0
         && !isLoading.value
       ) {
@@ -85,7 +92,6 @@ function onClickTab(tab: MomentTab) {
     return
 
   selectedMomentTab.value = tab
-  initData()
 }
 
 async function initData() {
@@ -102,26 +108,23 @@ async function initData() {
 function getData() {
   if (selectedMomentTab.value.type !== 'live')
     getTopBarMoments()
-  else
-    getTopBarLiveMoments()
+  else getTopBarLiveMoments()
 }
 
 function checkIfHasNewMomentsThenUpdateMoments() {
   if (selectedMomentTab.value.type === 'live')
     return
 
-  api.moment.getTopBarMoments({
-    type: selectedMomentTab.value.type,
-    update_baseline: momentUpdateBaseline.value || undefined,
-  })
+  api.moment
+    .getTopBarMoments({
+      type: selectedMomentTab.value.type,
+      update_baseline: momentUpdateBaseline.value || undefined,
+    })
     .then((res: TopBarMomentResult) => {
       if (res.code === 0) {
         const { has_more, items, update_baseline, update_num } = res.data
 
-        if (!has_more) {
-          noMoreContent.value = true
-          return
-        }
+        noMoreContent.value = !has_more
         if (update_num === 0)
           return
 
@@ -145,7 +148,11 @@ function checkIfHasNewMomentsThenUpdateMoments() {
         // setLastOffsetID('video', offset)
       }
     })
-    .finally(() => isLoading.value = false)
+    .catch((error) => {
+      loadFailed.value = true
+      console.error(error)
+    })
+    .finally(() => (isLoading.value = false))
 }
 
 function getTopBarMoments() {
@@ -155,19 +162,18 @@ function getTopBarMoments() {
     return
 
   isLoading.value = true
-  api.moment.getTopBarMoments({
-    type: selectedMomentTab.value.type,
-    update_baseline: momentUpdateBaseline.value || undefined,
-    offset: momentOffset.value || undefined,
-  })
+  loadFailed.value = false
+  api.moment
+    .getTopBarMoments({
+      type: selectedMomentTab.value.type,
+      update_baseline: momentUpdateBaseline.value || undefined,
+      offset: momentOffset.value || undefined,
+    })
     .then((res: TopBarMomentResult) => {
       if (res.code === 0) {
         const { has_more, items, offset, update_baseline, update_num } = res.data
 
-        if (!has_more) {
-          noMoreContent.value = true
-          return
-        }
+        noMoreContent.value = !has_more
 
         newMomentsCount.value = update_num
         momentUpdateBaseline.value = update_baseline
@@ -189,12 +195,15 @@ function getTopBarMoments() {
             cover: item.cover,
             link: item.jump_url,
             rid: item.rid,
-          }),
-          ),
+          })),
         )
       }
     })
-    .finally(() => isLoading.value = false)
+    .catch((error) => {
+      loadFailed.value = true
+      console.error(error)
+    })
+    .finally(() => (isLoading.value = false))
 }
 
 function isNewMoment(index: number) {
@@ -208,11 +217,13 @@ function getTopBarLiveMoments() {
     return
 
   isLoading.value = true
+  loadFailed.value = false
   const pageSize = 10
-  api.moment.getTopBarLiveMoments({
-    page: livePage.value,
-    pagesize: pageSize,
-  })
+  api.moment
+    .getTopBarLiveMoments({
+      page: livePage.value,
+      pagesize: pageSize,
+    })
     .then((res: TopBarLiveMomentResult) => {
       if (res.code === 0) {
         const { list } = res.data
@@ -234,36 +245,40 @@ function getTopBarLiveMoments() {
             authorFace: item.face,
             cover: item.pic,
             link: item.link,
-          }),
-          ),
+          })),
         )
       }
     })
-    .finally(() => isLoading.value = false)
+    .catch((error) => {
+      loadFailed.value = true
+      console.error(error)
+    })
+    .finally(() => (isLoading.value = false))
 }
 
 function toggleWatchLater(aid: number) {
   const isInWatchLater = addedWatchLaterList.includes(aid)
 
   if (!isInWatchLater) {
-    api.watchlater.saveToWatchLater({
-      aid,
-      csrf: getCSRF(),
-    })
+    api.watchlater
+      .saveToWatchLater({
+        aid,
+        csrf: getCSRF(),
+      })
       .then((res) => {
         if (res.code === 0)
           addedWatchLaterList.push(aid)
       })
   }
   else {
-    api.watchlater.removeFromWatchLater({
-      aid,
-      csrf: getCSRF(),
-    })
+    api.watchlater
+      .removeFromWatchLater({
+        aid,
+        csrf: getCSRF(),
+      })
       .then((res) => {
         if (res.code === 0) {
-          addedWatchLaterList.length = 0
-          Object.assign(addedWatchLaterList, addedWatchLaterList.filter(item => item !== aid))
+          addedWatchLaterList.splice(addedWatchLaterList.indexOf(aid), 1)
         }
       })
   }
@@ -277,7 +292,9 @@ defineExpose({
 <template>
   <div
     ref="momentsWrap"
-    style="backdrop-filter: var(--bew-filter-glass-1);" h="[calc(100vh-100px)]" max-h-500px
+    style="backdrop-filter: var(--bew-filter-glass-1)"
+    h="[calc(100vh-100px)]"
+    max-h-500px
     important-overflow-y-overlay
     bg="$bew-elevated"
     w="380px"
@@ -288,7 +305,7 @@ defineExpose({
   >
     <!-- top bar -->
     <header
-      style="backdrop-filter: var(--bew-filter-glass-1);"
+      style="backdrop-filter: var(--bew-filter-glass-1)"
       flex="~ justify-between items-center"
       p="y-4 x-6"
       pos="sticky top-0 left-0"
@@ -310,11 +327,7 @@ defineExpose({
           {{ tab.name }}
         </div>
       </div>
-      <ALink
-        href="https://t.bilibili.com/"
-        type="topBar"
-        flex="~ items-center"
-      >
+      <ALink href="https://t.bilibili.com/" type="topBar" flex="~ items-center">
         <span text="sm">{{ $t('common.view_all') }}</span>
       </ALink>
     </header>
@@ -322,19 +335,16 @@ defineExpose({
     <!-- moments wrapper -->
     <main rounded="$bew-radius" overflow-hidden p="x-4">
       <!-- loading -->
-      <Loading
-        v-if="isLoading && moments.length === 0"
-        h="full"
-        flex="~"
-        items="center"
-      />
+      <Loading v-if="isLoading && moments.length === 0" h="full" flex="~" items="center" />
 
       <!-- empty -->
       <Empty
         v-if="!isLoading && moments.length === 0"
         pos="absolute top-0 left-0"
         bg="$bew-content"
-        z="0" w="full" h="full"
+        z="0"
+        w="full"
+        h="full"
         flex="~ items-center"
         rounded="$bew-radius-half"
       />
@@ -347,7 +357,8 @@ defineExpose({
           :href="moment.link"
           type="topBar"
           flex="~ justify-between"
-          m="b-2" p="2"
+          m="b-2"
+          p="2"
           rounded="$bew-radius"
           hover:bg="$bew-fill-2"
           duration-300
@@ -368,15 +379,13 @@ defineExpose({
             :href="moment.authorJumpUrl"
             type="topBar"
             rounded="1/2"
-            w="40px" h="40px" m="r-4"
+            w="40px"
+            h="40px"
+            m="r-4"
             bg="$bew-skeleton"
             shrink-0
           >
-            <img
-              :src="`${moment.authorFace}@50w_50h_1c`"
-              rounded="1/2"
-              w="40px" h="40px"
-            >
+            <img :src="`${moment.authorFace}@50w_50h_1c`" rounded="1/2" w="40px" h="40px">
           </ALink>
 
           <div flex="~" justify="between" w="full">
@@ -384,33 +393,20 @@ defineExpose({
               <!-- <span v-if="selectedTab !== 1">{{ `${moment.name} ${t('topbar.moments_dropdown.uploaded')}` }}</span> -->
               <!-- <span v-else>{{ `${moment.name} ${t('topbar.moments_dropdown.now_streaming')}` }}</span> -->
 
-              <ALink
-                :href="moment.authorJumpUrl"
-                type="topBar"
-                font-bold
-              >
+              <ALink :href="moment.authorJumpUrl" type="topBar" font-bold>
                 {{ moment.author }}
               </ALink>
               <div overflow-hidden text-ellipsis break-anywhere>
                 {{ moment.title }}
               </div>
-              <div
-                text="$bew-text-2 sm"
-                m="y-2"
-              >
+              <div text="$bew-text-2 sm" m="y-2">
                 <!-- publish time -->
                 <div v-if="selectedMomentTab.type !== 'live'">
                   {{ moment.pubTime }}
                 </div>
 
                 <!-- Live -->
-                <div
-                  v-else
-                  text="$bew-theme-color"
-                  font="bold"
-                  flex="~"
-                  items="center"
-                >
+                <div v-else text="$bew-theme-color" font="bold" flex="~" items="center">
                   <div i-fluent:live-24-filled m="r-2" />
                   {{ $t('topbar.moments_dropdown.live_status') }}
                 </div>
@@ -418,24 +414,33 @@ defineExpose({
             </div>
             <div
               class="group"
-              flex="~ items-center justify-center" w="82px"
-              h="46px" m="l-4" shrink-0
+              flex="~ items-center justify-center"
+              w="82px"
+              h="46px"
+              m="l-4"
+              shrink-0
               rounded="$bew-radius-half"
               bg="$bew-skeleton"
             >
-              <img
-                :src="`${moment.cover}@128w_72h_1c`"
-                w="82px" h="46px"
-                rounded="$bew-radius-half"
-              >
+              <img :src="`${moment.cover}@128w_72h_1c`" w="82px" h="46px" rounded="$bew-radius-half">
               <div
-                opacity-0 group-hover:opacity-100
-                pos="absolute" duration-300 bg="black opacity-60"
-                rounded="$bew-radius-half" p-1
-                z-1 color-white
+                opacity-0
+                group-hover:opacity-100
+                pos="absolute"
+                duration-300
+                bg="black opacity-60"
+                rounded="$bew-radius-half"
+                p-1
+                z-1
+                color-white
                 @click.prevent="toggleWatchLater(moment.rid || 0)"
               >
-                <Tooltip v-if="!addedWatchLaterList.includes(moment.rid || 0)" :content="$t('common.save_to_watch_later')" placement="bottom" type="dark">
+                <Tooltip
+                  v-if="!addedWatchLaterList.includes(moment.rid || 0)"
+                  :content="$t('common.save_to_watch_later')"
+                  placement="bottom"
+                  type="dark"
+                >
                   <div i-mingcute:carplay-line />
                 </Tooltip>
                 <Tooltip v-else :content="$t('common.added')" placement="bottom" type="dark">
@@ -448,6 +453,9 @@ defineExpose({
       </TransitionGroup>
 
       <!-- loading -->
+      <Button v-if="loadFailed" @click="getData">
+        {{ $t('common.retry') }}
+      </Button>
       <Transition name="fade">
         <Loading v-if="isLoading && moments.length !== 0" m="-t-4" />
       </Transition>

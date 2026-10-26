@@ -4,12 +4,16 @@ import type { VideoCardStates } from '~/composables/useVideoCardState'
 
 import VirtualFeedItem from './VirtualFeedItem.vue'
 
-const props = withDefaults(defineProps<{
-  items: T[]
-  itemKey: (item: T) => string | number
-  layout?: 'adaptive' | 'twoColumns' | 'oneColumn'
-  columnOffset?: number
-}>(), { layout: 'oneColumn', columnOffset: 0 })
+const props = withDefaults(
+  defineProps<{
+    items: T[]
+    itemKey: (item: T) => string | number
+    layout?: 'adaptive' | 'twoColumns' | 'oneColumn'
+    columnOffset?: number
+    maxColumns?: number
+  }>(),
+  { layout: 'oneColumn', columnOffset: 0 },
+)
 
 const { scrollbarRef } = useBewlyApp()
 const root = ref<HTMLElement>()
@@ -29,20 +33,36 @@ function getCardStates(item: T) {
   }
   return state
 }
-watch(() => props.items, (items) => {
-  const retained = new Set(items.map(props.itemKey))
-  for (const key of cardStates.keys()) {
-    if (!retained.has(key))
-      cardStates.delete(key)
-  }
-})
-const columns = computed(() => props.layout === 'adaptive'
-  ? Math.max(1, (width.value >= 1536 ? 5 : width.value >= 1280 ? 4 : width.value >= 1024 ? 3 : width.value >= 768 ? 2 : 1) - props.columnOffset)
-  : props.layout === 'twoColumns' && width.value >= 1280 ? 2 : 1)
-const rows = computed(() => Array.from({ length: Math.ceil(props.items.length / columns.value) }, (_, index) => ({
-  index,
-  items: props.items.slice(index * columns.value, (index + 1) * columns.value),
-})))
+watch(
+  () => props.items,
+  (items) => {
+    const retained = new Set(items.map(props.itemKey))
+    for (const key of cardStates.keys()) {
+      if (!retained.has(key))
+        cardStates.delete(key)
+    }
+  },
+)
+const columns = computed(() =>
+  Math.min(
+    props.maxColumns ?? Number.POSITIVE_INFINITY,
+    props.layout === 'adaptive'
+      ? Math.max(
+          1,
+          (width.value >= 1536 ? 5 : width.value >= 1280 ? 4 : width.value >= 1024 ? 3 : width.value >= 768 ? 2 : 1)
+          - props.columnOffset,
+        )
+      : props.layout === 'twoColumns' && width.value >= 1280
+        ? 2
+        : 1,
+  ),
+)
+const rows = computed(() =>
+  Array.from({ length: Math.ceil(props.items.length / columns.value) }, (_, index) => ({
+    index,
+    items: props.items.slice(index * columns.value, (index + 1) * columns.value),
+  })),
+)
 // Measured rows preserve different card heights; unvisited rows use the measured mean.
 const estimate = computed(() => {
   const values = Object.values(heights.value)
@@ -56,11 +76,9 @@ const offsets = computed(() => {
 })
 const range = computed<{ start: number, end: number }>((previous) => {
   let start = 0
-  while (start < rows.value.length && offsets.value[start + 1] < scrollTop.value - 700)
-    start++
+  while (start < rows.value.length && offsets.value[start + 1] < scrollTop.value - 700) start++
   let end = start
-  while (end < rows.value.length && offsets.value[end] < scrollTop.value + viewHeight.value + 700)
-    end++
+  while (end < rows.value.length && offsets.value[end] < scrollTop.value + viewHeight.value + 700) end++
   end = Math.max(end, Math.min(start + 3, rows.value.length))
   return previous?.start === start && previous.end === end ? previous : { start, end }
 })
@@ -154,12 +172,18 @@ function stop() {
 watch(columns, () => {
   heights.value = {}
 })
-watch(() => props.layout, () => {
-  heights.value = {}
-})
-watch(() => props.items[0], () => {
-  heights.value = {}
-})
+watch(
+  () => props.layout,
+  () => {
+    heights.value = {}
+  },
+)
+watch(
+  () => props.items[0],
+  () => {
+    heights.value = {}
+  },
+)
 watch(visibleRows, observeRows, { flush: 'post' })
 onMounted(start)
 onActivated(start)
@@ -171,9 +195,15 @@ onBeforeUnmount(stop)
   <div ref="root">
     <div aria-hidden="true" :style="{ height: `${offsets[range.start]}px` }" />
     <div
-      v-for="row in visibleRows" :key="row.index"
+      v-for="row in visibleRows"
+      :key="row.index"
       :data-feed-row="row.index"
-      :style="{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '20px', paddingBottom: '20px' }"
+      :style="{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        gap: '20px',
+        paddingBottom: '20px',
+      }"
     >
       <VirtualFeedItem v-for="(item, index) in row.items" :key="itemKey(item)" :states="getCardStates(item)">
         <slot :item="item" :index="row.index * columns + index" />

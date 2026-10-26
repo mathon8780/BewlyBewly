@@ -2,6 +2,7 @@ import { useI18n } from 'vue-i18n'
 
 import { LanguageType } from '~/enums/appEnums'
 import { accessKey, settings } from '~/logic'
+import { loadLocale } from '~/utils/i18n'
 import { getUserID, injectCSS } from '~/utils/main'
 
 export function setupNecessarySettingsWatchers() {
@@ -31,7 +32,7 @@ export function setupNecessarySettingsWatchers() {
         }
       }
 
-      locale.value = settings.value.language
+      await loadLocale(settings.value.language)
 
       if (locale.value === LanguageType.Mandarin_CN) {
         document.documentElement.lang = 'zh-CN'
@@ -52,9 +53,6 @@ export function setupNecessarySettingsWatchers() {
   watch(
     [() => settings.value.customizeFont, () => settings.value.fontFamily],
     () => {
-      if (typeof settings.value.customizeFont === 'boolean')
-        settings.value.customizeFont = 'recommend'
-
       // Set the default font family
       if (!settings.value.fontFamily && settings.value.customizeFont !== 'custom') {
         /* Do not wrap following line */
@@ -161,30 +159,37 @@ export function setupNecessarySettingsWatchers() {
     { immediate: true },
   )
 
-  watch(() => settings.value.disableShadow, (newValue) => {
-    const bewlyElement = document.querySelector('#bewly') as HTMLElement
-    if (newValue) {
-      if (bewlyElement)
-        bewlyElement.classList.add('disable-shadow')
+  watch(
+    () => settings.value.disableShadow,
+    (newValue) => {
+      const bewlyElement = document.querySelector('#bewly') as HTMLElement
+      if (newValue) {
+        if (bewlyElement)
+          bewlyElement.classList.add('disable-shadow')
 
-      document.documentElement.classList.add('disable-shadow')
-    }
-    else {
-      if (bewlyElement)
-        bewlyElement.classList.remove('disable-shadow')
+        document.documentElement.classList.add('disable-shadow')
+      }
+      else {
+        if (bewlyElement)
+          bewlyElement.classList.remove('disable-shadow')
 
-      document.documentElement.classList.remove('disable-shadow')
-    }
-  }, { immediate: true })
+        document.documentElement.classList.remove('disable-shadow')
+      }
+    },
+    { immediate: true },
+  )
 
-  watch(() => settings.value.blockAds, () => {
-    // Do not use the "ads" keyword. AdGuard, AdBlock, and some ad-blocking extensions will
-    // detect and remove it when the class name contains "ads"
-    if (settings.value.blockAds)
-      document.documentElement.classList.add('block-useless-contents')
-    else
-      document.documentElement.classList.remove('block-useless-contents')
-  }, { immediate: true })
+  watch(
+    () => settings.value.blockAds,
+    () => {
+      // Do not use the "ads" keyword. AdGuard, AdBlock, and some ad-blocking extensions will
+      // detect and remove it when the class name contains "ads"
+      if (settings.value.blockAds)
+        document.documentElement.classList.add('block-useless-contents')
+      else document.documentElement.classList.remove('block-useless-contents')
+    },
+    { immediate: true },
+  )
 
   /**
    * 搜尋結果的上方的廣告，但有時是年末總結、年度報告這些
@@ -194,12 +199,15 @@ export function setupNecessarySettingsWatchers() {
       display: none !important;
     }
   `)
-  watch(() => settings.value.blockTopSearchPageAds, () => {
-    if (settings.value.blockTopSearchPageAds)
-      document.documentElement.appendChild(blockTopSearchPageAdsStyleEl)
-    else
-      document.documentElement.removeChild(blockTopSearchPageAdsStyleEl)
-  }, { immediate: true })
+  watch(
+    () => settings.value.blockTopSearchPageAds,
+    () => {
+      if (settings.value.blockTopSearchPageAds)
+        document.documentElement.appendChild(blockTopSearchPageAdsStyleEl)
+      else document.documentElement.removeChild(blockTopSearchPageAdsStyleEl)
+    },
+    { immediate: true },
+  )
 
   watch(
     () => settings.value.themeColor,
@@ -279,8 +287,7 @@ export function setupNecessarySettingsWatchers() {
     () => {
       if (settings.value.adaptToOtherPageStyles)
         document.documentElement.classList.add('bewly-design')
-      else
-        document.documentElement.classList.remove('bewly-design')
+      else document.documentElement.classList.remove('bewly-design')
     },
     { immediate: true },
   )

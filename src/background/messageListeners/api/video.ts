@@ -35,6 +35,7 @@ const API_VIDEO = {
   },
   // https://github.com/indefined/UserScripts/blob/master/bilibiliHome/bilibiliHome.API.md#%E6%8F%90%E4%BA%A4%E4%B8%8D%E5%96%9C%E6%AC%A2
   dislikeVideo: {
+    dedupe: false,
     url: 'https://app.bilibili.com/x/feed/dislike',
     _fetch: {
       method: 'get',
@@ -55,6 +56,7 @@ const API_VIDEO = {
   },
   // https://github.com/indefined/UserScripts/blob/master/bilibiliHome/bilibiliHome.API.md#%E6%92%A4%E9%94%80%E4%B8%8D%E5%96%9C%E6%AC%A2
   undoDislikeVideo: {
+    dedupe: false,
     url: 'https://app.bilibili.com/x/feed/dislike/cancel',
     _fetch: {
       method: 'get',

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onClickOutside, onKeyStroke, useMouseInElement } from '@vueuse/core'
-import type { Ref, UnwrapNestedRefs } from 'vue'
+import type { Ref } from 'vue'
 
 import { useBewlyApp } from '~/composables/useAppProvider'
 import { useDark } from '~/composables/useDark'
@@ -8,55 +8,42 @@ import { useDelayedHover } from '~/composables/useDelayedHover'
 import { OVERLAY_SCROLL_BAR_SCROLL, TOP_BAR_VISIBILITY_CHANGE } from '~/constants/globalEvents'
 import { AppPage } from '~/enums/appEnums'
 import { settings } from '~/logic'
-import api from '~/utils/api'
+import { lazyComponent } from '~/utils/lazyComponent'
 import { getUserID, isHomePage, isInIframe } from '~/utils/main'
 import emitter from '~/utils/mitt'
 import { createTransformer } from '~/utils/transformer'
 
 import BewlyOrBiliPageSwitcher from './components/BewlyOrBiliPageSwitcher.vue'
-import ChannelsPop from './components/ChannelsPop.vue'
-import FavoritesPop from './components/FavoritesPop.vue'
-import HistoryPop from './components/HistoryPop.vue'
-import MomentsPop from './components/MomentsPop.vue'
-import MorePop from './components/MorePop.vue'
-import NotificationsDrawer from './components/NotificationsDrawer.vue'
-import NotificationsPop from './components/NotificationsPop.vue'
-import UploadPop from './components/UploadPop.vue'
-import UserPanelPop from './components/UserPanelPop.vue'
-import WatchLaterPop from './components/WatchLaterPop.vue'
-import type { UnReadDm, UnReadMessage, UserInfo } from './types'
-import { useTopBarPolling } from './useTopBarPolling'
+import { useTopBarData } from './useTopBarData'
 
-// import { useTopBarStore } from '~/stores/topBarStore'
-
-// const popups = { NotificationsPop, MomentsPop, FavoritesPop, HistoryPop }
-
-// const topBarStore = useTopBarStore()
-
-// const topBarItems = computed(() => {
-//   return topBarStore.topBarItems
-// })
+const ChannelsPop = lazyComponent(() => import('./components/ChannelsPop.vue'))
+const FavoritesPop = lazyComponent(() => import('./components/FavoritesPop.vue'))
+const HistoryPop = lazyComponent(() => import('./components/HistoryPop.vue'))
+const MomentsPop = lazyComponent(() => import('./components/MomentsPop.vue'))
+const MorePop = lazyComponent(() => import('./components/MorePop.vue'))
+const NotificationsDrawer = lazyComponent(() => import('./components/NotificationsDrawer.vue'))
+const NotificationsPop = lazyComponent(() => import('./components/NotificationsPop.vue'))
+const UploadPop = lazyComponent(() => import('./components/UploadPop.vue'))
+const UserPanelPop = lazyComponent(() => import('./components/UserPanelPop.vue'))
+const WatchLaterPop = lazyComponent(() => import('./components/WatchLaterPop.vue'))
 
 const { activatedPage, scrollbarRef, reachTop } = useBewlyApp()
 const { isDark } = useDark()
 
 const mid = getUserID() || ''
-const userInfo = reactive<UserInfo | NonNullable<unknown>>({}) as UnwrapNestedRefs<UserInfo>
+const {
+  userInfo,
+  isLogin,
+  isAlive,
+  unReadMessageCount,
+  newMomentsCount,
+  getUnreadMessageCount,
+  getTopBarNewMomentsCount,
+} = useTopBarData()
 
 const hideTopBar = ref<boolean>(false)
 const headerTarget = ref(null)
 const { isOutside: isOutsideTopBar } = useMouseInElement(headerTarget)
-
-// initially, assume the user is logged in cuz data retrieval is slow, which may show the login
-// button even after login. if the user is not logged in, the login button will show up later
-const isLogin = ref<boolean>(true)
-let unreadLoading = false
-let momentsLoading = false
-const { isActive, isAlive } = useTopBarPolling(getUserInfo, () => Promise.all([getUnreadMessageCount(), getTopBarNewMomentsCount()]))
-
-const logo = ref<HTMLElement>() as Ref<HTMLElement>
-const avatarImg = ref<HTMLImageElement>() as Ref<HTMLImageElement>
-const avatarShadow = ref<HTMLImageElement>() as Ref<HTMLImageElement>
 
 const scrollTop = ref<number>(0)
 const oldScrollTop = ref<number>(0)
@@ -79,10 +66,8 @@ const forceWhiteIcon = computed((): boolean => {
     || (isInIframe() && isHomePage())
     // 分區頁面由於上面有背景，所以強制 icon 變白色用於區分背景
     // channel, anime, chinese anime, tv shows, movie, variety shows, mooc but not including video page
-    || (
-      /https?:\/\/(?:www.)?bilibili.com\/(?:v|anime|guochuang|tv|movie|variety|mooc).*/.test(location.href)
-      && !/https?:\/\/(?:www.)?bilibili.com\/video.*/.test(location.href)
-    )
+    || (/https?:\/\/(?:www.)?bilibili.com\/(?:v|anime|guochuang|tv|movie|variety|mooc).*/.test(location.href)
+      && !/https?:\/\/(?:www.)?bilibili.com\/video.*/.test(location.href))
     // user space page 空間頁
     || /https?:\/\/space.bilibili\.com\.*/.test(location.href)
     // premium page bilibili 大會員頁
@@ -274,10 +259,13 @@ Object.entries(topBarItemElements).forEach(([key, val]) => {
 
 // #endregion
 
-watch(() => settings.value.autoHideTopBar, (newVal) => {
-  if (!newVal)
-    toggleTopBarVisible(true)
-})
+watch(
+  () => settings.value.autoHideTopBar,
+  (newVal) => {
+    if (!newVal)
+      toggleTopBarVisible(true)
+  },
+)
 
 watch(
   () => popupVisible.notifications,
@@ -308,17 +296,20 @@ watch(
   { immediate: true },
 )
 
-watch(() => popupVisible.favorites, (newVal, oldVal) => {
-  if (newVal === oldVal)
-    return
-  if (newVal) {
-    nextTick(() => {
-      if (favoritesTransformer.value)
-      // @ts-expect-error allow
-        favoritesTransformer.value.refreshFavoriteResources()
-    })
-  }
-})
+watch(
+  () => popupVisible.favorites,
+  (newVal, oldVal) => {
+    if (newVal === oldVal)
+      return
+    if (newVal) {
+      nextTick(() => {
+        if (favoritesTransformer.value)
+          // @ts-expect-error allow
+          favoritesTransformer.value.refreshFavoriteResources()
+      })
+    }
+  },
+)
 
 watch(activatedPage, () => {
   toggleTopBarVisible(true)
@@ -358,83 +349,10 @@ function handleScroll() {
   if (settings.value.autoHideTopBar && isOutsideTopBar && scrollTop.value !== 0) {
     if (scrollTop.value > oldScrollTop.value)
       toggleTopBarVisible(false)
-
-    else
-      toggleTopBarVisible(true)
+    else toggleTopBarVisible(true)
   }
 
   oldScrollTop.value = scrollTop.value
-}
-
-async function getUserInfo() {
-  try {
-    const res = await api.user.getUserInfo()
-    if (!isAlive())
-      return
-
-    if (res.code === 0) {
-      isLogin.value = true
-      Object.assign(userInfo, res.data)
-    }
-    // Account not logged in
-    else if (res.code === -101) {
-      isLogin.value = false
-    }
-  }
-  catch (error) {
-    if (!isAlive())
-      return
-    isLogin.value = false
-    console.error(error)
-  }
-}
-
-// #region Notifications
-const unReadMessage = reactive<UnReadMessage | NonNullable<unknown>>(
-  {},
-) as UnwrapNestedRefs<UnReadMessage>
-const unReadDm = reactive<UnReadDm>({} as UnwrapNestedRefs<UnReadDm>)
-const unReadMessageCount = ref<number>(0)
-
-async function getUnreadMessageCount() {
-  if (!isActive() || !isLogin.value || unreadLoading)
-    return
-
-  unreadLoading = true
-  let result = 0
-
-  try {
-    let res
-    res = await api.notification.getUnreadMsg()
-    if (!isActive())
-      return
-    if (res.code === 0) {
-      Object.assign(unReadMessage, res.data)
-      Object.entries(unReadMessage).forEach(([key, value]) => {
-        if (key !== 'up' && key !== 'recv_reply' && key !== 'recv_like') {
-          if (typeof value === 'number')
-            result += value
-        }
-      })
-    }
-
-    res = await api.notification.getUnreadDm()
-    if (!isActive())
-      return
-    if (res.code === 0) {
-      Object.assign(unReadDm, res.data)
-      if (typeof unReadDm.follow_unread === 'number')
-        result += unReadDm.follow_unread
-    }
-  }
-  catch (error) {
-    console.error(error)
-  }
-  finally {
-    unreadLoading = false
-    if (isActive())
-      unReadMessageCount.value = result
-  }
 }
 
 const notificationsDrawerUrl = ref<string>('https://message.bilibili.com/')
@@ -442,34 +360,6 @@ function handleNotificationsItemClick(item: { name: string, url: string, unreadC
   if (settings.value.openNotificationsPageAsDrawer) {
     drawerVisible.notifications = true
     notificationsDrawerUrl.value = item.url
-  }
-}
-// #endregion
-
-// #region Moments
-const newMomentsCount = ref<number>(0)
-
-async function getTopBarNewMomentsCount() {
-  if (!isActive() || !isLogin.value || momentsLoading)
-    return
-
-  momentsLoading = true
-  let result = 0
-
-  try {
-    const res = await api.moment.getTopBarNewMomentsCount()
-    if (res.code === 0) {
-      if (typeof res.data.update_info.item.count === 'number')
-        result = res.data.update_info.item.count
-    }
-  }
-  catch (error) {
-    console.error(error)
-  }
-  finally {
-    momentsLoading = false
-    if (isActive())
-      newMomentsCount.value = result
   }
 }
 // #endregion
@@ -495,30 +385,44 @@ defineExpose({
     <header
       v-if="showTopBar"
       ref="headerTarget"
-      w="full" transition="all 300 ease-in-out"
+      w="full"
+      transition="all 300 ease-in-out"
       :class="{ 'hide': hideTopBar, 'force-white-icon': forceWhiteIcon }"
       :style="{ position: isTopBarFixed ? 'fixed' : 'absolute' }"
     >
       <main
         max-w="$bew-page-max-width"
         flex="~ justify-between items-center gap-4"
-        p="x-12" m-auto
+        p="x-12"
+        m-auto
         h="$bew-top-bar-height"
       >
         <!-- Top bar mask -->
         <div
           v-if="!reachTop"
           style="
-            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 1) 24px, rgba(0, 0, 0, 0.9) 44px, transparent);
+            mask-image: linear-gradient(
+              to bottom,
+              rgba(0, 0, 0, 1),
+              rgba(0, 0, 0, 1) 24px,
+              rgba(0, 0, 0, 0.9) 44px,
+              transparent
+            );
           "
           :style="{ backdropFilter: settings.disableFrostedGlass ? 'none' : 'blur(12px)' }"
-          pos="absolute top-0 left-0" w-full h="[calc(var(--bew-top-bar-height)+16px)]"
-          pointer-events-none transform-gpu
+          pos="absolute top-0 left-0"
+          w-full
+          h="[calc(var(--bew-top-bar-height)+16px)]"
+          pointer-events-none
+          transform-gpu
         />
 
         <div
-          pos="absolute top-0 left-0" w-full
-          pointer-events-none opacity-100 duration-300
+          pos="absolute top-0 left-0"
+          w-full
+          pointer-events-none
+          opacity-100
+          duration-300
           :style="{
             background: `linear-gradient(to bottom, ${
               forceWhiteIcon
@@ -534,41 +438,57 @@ defineExpose({
         <Transition name="fade">
           <div
             v-if="settings.showTopBarThemeColorGradient && !forceWhiteIcon && reachTop && isDark"
-            pos="absolute top-0 left-0" w-full h="$bew-top-bar-height" pointer-events-none
+            pos="absolute top-0 left-0"
+            w-full
+            h="$bew-top-bar-height"
+            pointer-events-none
             :style="{ background: 'linear-gradient(to bottom, var(--bew-theme-color-10), transparent)' }"
           />
         </Transition>
 
         <div shrink-0 flex="inline xl:1 justify-start items-center gap-2" pos="relative" z-1>
-          <div
-            ref="channels"
-            z-1 relative w-fit
-          >
+          <div ref="channels" z-1 relative w-fit>
             <a
-              ref="logo" href="//www.bilibili.com"
+              href="//www.bilibili.com"
               target="_top"
               class="group logo"
               :class="{
                 activated: popupVisible.channels,
               }"
               grid="~ place-items-center"
-              rounded="46px" duration-300
-              w-46px h-46px transform-gpu
+              rounded="46px"
+              duration-300
+              w-46px
+              h-46px
+              transform-gpu
               bg="hover:$bew-theme-color"
-              @click="event => handleClickTopBarItem(event, 'channels')"
+              @click="(event) => handleClickTopBarItem(event, 'channels')"
             >
               <svg
-                t="1720198072316" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"
-                p-id="1477" width="36" height="36"
+                t="1720198072316"
+                class="icon"
+                viewBox="0 0 1024 1024"
+                version="1.1"
+                xmlns="http://www.w3.org/2000/svg"
+                p-id="1477"
+                width="36"
+                height="36"
                 :style="{
                   fill: forceWhiteIcon ? 'white' : 'var(--bew-theme-color)',
-                  filter: forceWhiteIcon ? 'drop-shadow(0 0 4px rgba(0, 0, 0, 0.6))' : 'drop-shadow(0 0 4px var(--bew-theme-color-60))',
+                  filter: forceWhiteIcon
+                    ? 'drop-shadow(0 0 4px rgba(0, 0, 0, 0.6))'
+                    : 'drop-shadow(0 0 4px var(--bew-theme-color-60))',
                 }"
                 group-hover:fill="!white"
                 group-hover:filter="!none"
-                duration-300 mt--1px
+                duration-300
+                mt--1px
               >
-                <path d="M450.803484 456.506027l-120.670435 23.103715 10.333298 45.288107 119.454151-23.102578-9.117014-45.289244z m65.04448 120.060586c-29.483236 63.220622-55.926329 15.502222-55.926328 15.502223l-19.754098 12.768142s38.90176 53.192249 75.986489 12.764729c43.770311 40.42752 77.203911-13.068516 77.203911-13.068516l-17.934791-11.55072c0.001138-0.304924-31.305956 44.983182-59.575183-16.415858z m59.57632-74.773617L695.182222 524.895573l10.029511-45.288106-120.364373-23.103716-9.423076 45.289245z m237.784178-88.926436c-1.905778-84.362809-75.487004-100.540871-75.487004-100.540871s-57.408853-0.316302-131.944676-0.95232l54.237867-52.332089s8.562916-10.784996-6.026809-22.834062c-14.592-12.051342-15.543182-6.660551-20.615396-3.487289-4.441884 3.169849-69.462471 66.920676-80.878933 78.340551-29.494613 0-60.2624-0.319716-90.075591-0.319716h10.466418s-77.705671-76.754489-82.781298-80.241777c-5.075627-3.488427-5.709369-8.56064-20.616533 3.487289-14.589724 12.05248-6.026809 22.8352-6.026809 22.8352l55.504213 53.919288c-60.261262 0-112.280462 0.319716-136.383147 1.268623-78.025387 22.521173-71.99744 100.859449-71.99744 100.859449s0.950044 168.100978 0 253.103217c8.562916 85.00224 73.899804 98.636231 73.899805 98.636231s26.007324 0.63488 45.357511 0.63488c1.900089 5.391929 3.486151 32.034133 33.302756 32.034134 29.495751 0 33.30048-32.034133 33.30048-32.034134s217.263218-0.950044 235.340231-0.950044c0.953458 9.196658 5.394204 33.619058 35.207395 33.303893 29.494613-0.636018 31.714418-35.20512 31.714418-35.20512s10.151253-0.95232 40.280747 0c70.413653-13.005938 74.534684-95.468658 74.534684-95.468657s-1.265209-169.689316-0.312889-254.056676zM752.628622 681.8304c0 13.319964-10.467556 24.102684-23.471218 24.102684H300.980907c-13.003662 0-23.47008-10.78272-23.47008-24.102684V397.961671c0-13.32224 10.467556-24.106098 23.47008-24.106098h428.176497c13.003662 0 23.471218 10.783858 23.471218 24.106098v283.868729z" p-id="1478" /></svg>
+                <path
+                  d="M450.803484 456.506027l-120.670435 23.103715 10.333298 45.288107 119.454151-23.102578-9.117014-45.289244z m65.04448 120.060586c-29.483236 63.220622-55.926329 15.502222-55.926328 15.502223l-19.754098 12.768142s38.90176 53.192249 75.986489 12.764729c43.770311 40.42752 77.203911-13.068516 77.203911-13.068516l-17.934791-11.55072c0.001138-0.304924-31.305956 44.983182-59.575183-16.415858z m59.57632-74.773617L695.182222 524.895573l10.029511-45.288106-120.364373-23.103716-9.423076 45.289245z m237.784178-88.926436c-1.905778-84.362809-75.487004-100.540871-75.487004-100.540871s-57.408853-0.316302-131.944676-0.95232l54.237867-52.332089s8.562916-10.784996-6.026809-22.834062c-14.592-12.051342-15.543182-6.660551-20.615396-3.487289-4.441884 3.169849-69.462471 66.920676-80.878933 78.340551-29.494613 0-60.2624-0.319716-90.075591-0.319716h10.466418s-77.705671-76.754489-82.781298-80.241777c-5.075627-3.488427-5.709369-8.56064-20.616533 3.487289-14.589724 12.05248-6.026809 22.8352-6.026809 22.8352l55.504213 53.919288c-60.261262 0-112.280462 0.319716-136.383147 1.268623-78.025387 22.521173-71.99744 100.859449-71.99744 100.859449s0.950044 168.100978 0 253.103217c8.562916 85.00224 73.899804 98.636231 73.899805 98.636231s26.007324 0.63488 45.357511 0.63488c1.900089 5.391929 3.486151 32.034133 33.302756 32.034134 29.495751 0 33.30048-32.034133 33.30048-32.034134s217.263218-0.950044 235.340231-0.950044c0.953458 9.196658 5.394204 33.619058 35.207395 33.303893 29.494613-0.636018 31.714418-35.20512 31.714418-35.20512s10.151253-0.95232 40.280747 0c70.413653-13.005938 74.534684-95.468658 74.534684-95.468657s-1.265209-169.689316-0.312889-254.056676zM752.628622 681.8304c0 13.319964-10.467556 24.102684-23.471218 24.102684H300.980907c-13.003662 0-23.47008-10.78272-23.47008-24.102684V397.961671c0-13.32224 10.467556-24.106098 23.47008-24.106098h428.176497c13.003662 0 23.471218 10.783858 23.471218 24.106098v283.868729z"
+                  p-id="1478"
+                />
+              </svg>
             </a>
 
             <Transition name="slide-in">
@@ -591,36 +511,30 @@ defineExpose({
               v-if="showSearchBar"
               class="search-bar"
               :style="{
-                '--b-search-bar-normal-color': settings.disableFrostedGlass ? 'var(--bew-elevated)' : 'color-mix(in oklab, var(--bew-elevated-solid), transparent 60%)',
+                '--b-search-bar-normal-color': settings.disableFrostedGlass
+                  ? 'var(--bew-elevated)'
+                  : 'color-mix(in oklab, var(--bew-elevated-solid), transparent 60%)',
                 '--b-search-bar-hover-color': 'var(--bew-elevated-hover)',
                 '--b-search-bar-focus-color': 'var(--bew-elevated)',
-                '--b-search-bar-normal-icon-color': forceWhiteIcon && !settings.disableFrostedGlass ? 'white' : 'var(--bew-text-1)',
-                '--b-search-bar-normal-text-color': forceWhiteIcon && !settings.disableFrostedGlass ? 'white' : 'var(--bew-text-1)',
+                '--b-search-bar-normal-icon-color':
+                  forceWhiteIcon && !settings.disableFrostedGlass ? 'white' : 'var(--bew-text-1)',
+                '--b-search-bar-normal-text-color':
+                  forceWhiteIcon && !settings.disableFrostedGlass ? 'white' : 'var(--bew-text-1)',
               }"
             />
           </Transition>
         </div>
 
         <!-- right content -->
-        <div
-          class="right-side"
-          flex="inline xl:1 justify-end items-center"
-        >
+        <div class="right-side" flex="inline xl:1 justify-end items-center">
           <div
-            class="others"
-            flex="~ items-center gap-1" h-46px px-5px
-            text="$bew-text-1"
+            class="others" flex="~ items-center gap-1" h-46px px-5px text="$bew-text-1"
             transform-gpu
           >
-            <div
-              v-if="!isLogin"
-              class="right-side-item"
-              important-w-auto
-            >
+            <div v-if="!isLogin" class="right-side-item" important-w-auto>
               <a href="https://passport.bilibili.com/login" class="login">
-                <div i-solar:user-circle-bold-duotone class="text-xl mr-2" />{{
-                  $t('topbar.sign_in')
-                }}
+                <div i-solar:user-circle-bold-duotone class="text-xl mr-2" />
+                {{ $t('topbar.sign_in') }}
               </a>
             </div>
             <template v-if="isLogin">
@@ -646,19 +560,13 @@ defineExpose({
                   ref="moments"
                   class="right-side-item"
                   :class="{ active: popupVisible.moments }"
-                  @click="event => handleClickTopBarItem(event, 'moments')"
+                  @click="(event) => handleClickTopBarItem(event, 'moments')"
                 >
                   <template v-if="newMomentsCount > 0">
-                    <div
-                      v-if="settings.topBarIconBadges === 'number'"
-                      class="unread-num-dot"
-                    >
+                    <div v-if="settings.topBarIconBadges === 'number'" class="unread-num-dot">
                       {{ newMomentsCount > 99 ? '99+' : newMomentsCount }}
                     </div>
-                    <div
-                      v-else-if="settings.topBarIconBadges === 'dot'"
-                      class="unread-dot"
-                    />
+                    <div v-else-if="settings.topBarIconBadges === 'dot'" class="unread-dot" />
                   </template>
                   <ALink
                     :class="{ 'white-icon': forceWhiteIcon }"
@@ -671,8 +579,8 @@ defineExpose({
 
                   <Transition name="slide-in">
                     <MomentsPop
-                      v-show="popupVisible.moments"
-                      ref="momentsTransformer"
+                      v-if="popupVisible.moments"
+                      :ref="(element: unknown) => (momentsTransformer = element as HTMLElement)"
                       class="bew-popover"
                       @click.stop="() => {}"
                     />
@@ -684,7 +592,7 @@ defineExpose({
                   ref="favorites"
                   class="right-side-item"
                   :class="{ active: popupVisible.favorites }"
-                  @click="event => handleClickTopBarItem(event, 'favorites')"
+                  @click="(event) => handleClickTopBarItem(event, 'favorites')"
                 >
                   <ALink
                     :class="{ 'white-icon': forceWhiteIcon }"
@@ -712,7 +620,7 @@ defineExpose({
                   ref="history"
                   class="right-side-item"
                   :class="{ active: popupVisible.history }"
-                  @click="event => handleClickTopBarItem(event, 'history')"
+                  @click="(event) => handleClickTopBarItem(event, 'history')"
                 >
                   <ALink
                     :class="{ 'white-icon': forceWhiteIcon }"
@@ -726,7 +634,7 @@ defineExpose({
                   <Transition name="slide-in">
                     <HistoryPop
                       v-if="popupVisible.history"
-                      ref="historyTransformer"
+                      :ref="(element: unknown) => (historyTransformer = element as HTMLElement)"
                       class="bew-popover"
                       @click.stop="() => {}"
                     />
@@ -738,7 +646,7 @@ defineExpose({
                   ref="watchLater"
                   class="right-side-item"
                   :class="{ active: popupVisible.watchLater }"
-                  @click="event => handleClickTopBarItem(event, 'watchLater')"
+                  @click="(event) => handleClickTopBarItem(event, 'watchLater')"
                 >
                   <ALink
                     :class="{ 'white-icon': forceWhiteIcon }"
@@ -752,7 +660,7 @@ defineExpose({
                   <Transition name="slide-in">
                     <WatchLaterPop
                       v-if="popupVisible.watchLater"
-                      ref="watchLaterTransformer"
+                      :ref="(element: unknown) => (watchLaterTransformer = element as HTMLElement)"
                       class="bew-popover"
                       @click.stop="() => {}"
                     />
@@ -777,19 +685,16 @@ defineExpose({
                 ref="more"
                 class="right-side-item lg:!hidden flex"
                 :class="{ active: popupVisible.more }"
-                @click="event => handleClickTopBarItem(event, 'more')"
+                @click="(event) => handleClickTopBarItem(event, 'more')"
               >
-                <a
-                  :class="{ 'white-icon': forceWhiteIcon }"
-                  title="More"
-                >
+                <a :class="{ 'white-icon': forceWhiteIcon }" title="More">
                   <div i-mingcute:menu-line />
                 </a>
 
                 <Transition name="slide-in">
                   <MorePop
                     v-show="popupVisible.more"
-                    ref="moreTransformer"
+                    :ref="(element: unknown) => (moreTransformer = element as HTMLElement)"
                     class="bew-popover"
                     @click.stop="() => {}"
                   />
@@ -799,8 +704,7 @@ defineExpose({
               <div class="hidden lg:flex" gap-1 items-center>
                 <!-- Divider -->
                 <div
-                  :class="{ 'white-icon': forceWhiteIcon }"
-                  w-2px h-16px bg="$bew-border-color" mx-1
+                  :class="{ 'white-icon': forceWhiteIcon }" w-2px h-16px bg="$bew-border-color" mx-1
                   rounded-4px
                 />
 
@@ -809,12 +713,12 @@ defineExpose({
                   ref="upload"
                   class="right-side-item"
                   :class="{ active: popupVisible.upload }"
-                  @click="event => handleClickTopBarItem(event, 'upload')"
+                  @click="(event) => handleClickTopBarItem(event, 'upload')"
                 >
                   <a
                     class="upload"
                     :class="{ 'white-icon': forceWhiteIcon }"
-                    style="backdrop-filter: var(--bew-filter-glass-1);"
+                    style="backdrop-filter: var(--bew-filter-glass-1)"
                     href="https://member.bilibili.com/platform/upload/video/frame"
                     target="_blank"
                     :title="$t('topbar.upload')"
@@ -825,7 +729,7 @@ defineExpose({
                   <Transition name="slide-in">
                     <UploadPop
                       v-if="popupVisible.upload"
-                      ref="uploadTransformer"
+                      :ref="(element: unknown) => (uploadTransformer = element as HTMLElement)"
                       class="bew-popover"
                       @click.stop="() => {}"
                     />
@@ -837,19 +741,13 @@ defineExpose({
                   ref="notifications"
                   class="right-side-item"
                   :class="{ active: popupVisible.notifications }"
-                  @click="event => handleClickTopBarItem(event, 'notifications')"
+                  @click="(event) => handleClickTopBarItem(event, 'notifications')"
                 >
                   <template v-if="unReadMessageCount > 0">
-                    <div
-                      v-if="settings.topBarIconBadges === 'number'"
-                      class="unread-num-dot"
-                    >
+                    <div v-if="settings.topBarIconBadges === 'number'" class="unread-num-dot">
                       {{ unReadMessageCount > 99 ? '99+' : unReadMessageCount }}
                     </div>
-                    <div
-                      v-else-if="settings.topBarIconBadges === 'dot'"
-                      class="unread-dot"
-                    />
+                    <div v-else-if="settings.topBarIconBadges === 'dot'" class="unread-dot" />
                   </template>
 
                   <ALink
@@ -866,7 +764,7 @@ defineExpose({
                   <Transition name="slide-in">
                     <NotificationsPop
                       v-if="popupVisible.notifications"
-                      ref="notificationsTransformer"
+                      :ref="(element: unknown) => (notificationsTransformer = element as HTMLElement)"
                       class="bew-popover"
                       @click.stop="() => {}"
                       @item-click="handleNotificationsItemClick"
@@ -882,30 +780,22 @@ defineExpose({
               ref="avatar"
               :class="{ hover: popupVisible.userPanel }"
               class="avatar right-side-item"
-              @click="event => handleClickTopBarItem(event, 'userPanel')"
+              @click="(event) => handleClickTopBarItem(event, 'userPanel')"
             >
               <ALink
-                ref="avatarImg"
                 :href="`https://space.bilibili.com/${mid}`"
                 type="topBar"
                 class="avatar-img"
                 :class="{ hover: popupVisible.userPanel }"
                 :style="{
-                  backgroundImage: `url(${`${userInfo.face}`.replace(
-                    'http:',
-                    '',
-                  )})`,
+                  backgroundImage: `url(${`${userInfo.face}`.replace('http:', '')})`,
                 }"
               />
               <div
-                ref="avatarShadow"
                 class="avatar-shadow"
                 :class="{ hover: popupVisible.userPanel }"
                 :style="{
-                  backgroundImage: `url(${`${userInfo.face}`.replace(
-                    'http:',
-                    '',
-                  )})`,
+                  backgroundImage: `url(${`${userInfo.face}`.replace('http:', '')})`,
                 }"
               />
               <svg
@@ -914,18 +804,22 @@ defineExpose({
                 :class="{ hover: popupVisible.userPanel }"
                 :style="{ opacity: popupVisible.userPanel ? 1 : 0 }"
                 bg="[url(https://i0.hdslb.com/bfs/seed/jinkela/short/user-avatar/big-vip.svg)] contain no-repeat"
-                w="28%" h="28%" z-1
-                pos="absolute bottom--20px right-28px" duration-300
+                w="28%"
+                h="28%"
+                z-1
+                pos="absolute bottom--20px right-28px"
+                duration-300
               />
 
               <Transition name="slide-in">
                 <UserPanelPop
                   v-if="popupVisible.userPanel"
-                  ref="avatarTransformer"
+                  :ref="(element: unknown) => (avatarTransformer = element as HTMLElement)"
                   :user-info="userInfo"
                   after:h="!0"
                   class="bew-popover"
-                  pos="!left-auto !right-0" transform="!translate-x-0"
+                  pos="!left-auto !right-0"
+                  transform="!translate-x-0"
                   @click.stop="() => {}"
                 />
               </Transition>

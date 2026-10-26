@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import Empty from '~/components/Empty.vue'
 import Loading from '~/components/Loading.vue'
 import Progress from '~/components/Progress.vue'
+import { useAsyncTask } from '~/composables/useAsyncTask'
 import type { HistoryResult, List as HistoryItem } from '~/models/history/history'
 import { Business } from '~/models/history/history'
 import api from '~/utils/api'
@@ -35,31 +36,35 @@ const historyTabs = computed(() => [
  * Active tab (0: archive, 1: live, 2: article)
  */
 const activatedTab = ref<number>(0)
-const isLoading = ref<boolean>(false)
+const { isLoading, loadFailed, run } = useAsyncTask()
 // when noMoreContent is true, the user can't scroll down to load more content
 const noMoreContent = ref<boolean>(false)
 const livePage = ref<number>(1)
 const historysWrap = ref<HTMLElement>() as Ref<HTMLElement>
 
-watch(activatedTab, (newVal: number | undefined, oldVal: number | undefined) => {
-  if (newVal === oldVal)
-    return
+watch(
+  activatedTab,
+  (newVal: number | undefined, oldVal: number | undefined) => {
+    if (newVal === oldVal)
+      return
 
-  historys.length = 0
-  if (historysWrap.value)
-    scrollToTop(historysWrap.value)
+    historys.length = 0
+    if (historysWrap.value)
+      scrollToTop(historysWrap.value)
 
-  if (newVal === 0) {
-    getHistoryList(Business.ARCHIVE)
-  }
-  else if (newVal === 1) {
-    livePage.value = 1
-    getHistoryList(Business.LIVE)
-  }
-  else if (newVal === 2) {
-    getHistoryList(Business.ARTICLE)
-  }
-}, { immediate: true })
+    if (newVal === 0) {
+      getHistoryList(Business.ARCHIVE)
+    }
+    else if (newVal === 1) {
+      livePage.value = 1
+      getHistoryList(Business.LIVE)
+    }
+    else if (newVal === 2) {
+      getHistoryList(Business.ARTICLE)
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   if (historysWrap.value) {
@@ -67,28 +72,18 @@ onMounted(() => {
       // When you scroll to the bottom, they will automatically
       // add the next page of data to the history list
       if (
-        historysWrap.value.clientHeight + historysWrap.value.scrollTop
-        >= historysWrap.value.scrollHeight - 20
+        historysWrap.value.clientHeight + historysWrap.value.scrollTop >= historysWrap.value.scrollHeight - 20
         && historys.length > 0
         && !isLoading.value
       ) {
         if (activatedTab.value === 0 && !noMoreContent.value) {
-          getHistoryList(
-            Business.ARCHIVE,
-            historys[historys.length - 1].view_at,
-          )
+          getHistoryList(Business.ARCHIVE, historys[historys.length - 1].view_at)
         }
         else if (activatedTab.value === 1 && !noMoreContent.value) {
-          getHistoryList(
-            Business.LIVE,
-            historys[historys.length - 1].view_at,
-          )
+          getHistoryList(Business.LIVE, historys[historys.length - 1].view_at)
         }
         else if (activatedTab.value === 2 && !noMoreContent.value) {
-          getHistoryList(
-            Business.ARTICLE,
-            historys[historys.length - 1].view_at,
-          )
+          getHistoryList(Business.ARTICLE, historys[historys.length - 1].view_at)
         }
       }
     })
@@ -131,8 +126,7 @@ function getHistoryUrl(item: HistoryItem) {
   else if (item.history.business === Business.ARTICLE || item.history.business === Business.ARTICLE_LIST) {
     if (item.history.cid === 0)
       return `//www.bilibili.com/read/cv${item.history.oid}`
-    else
-      return `//www.bilibili.com/read/cv${item.history.cid}`
+    else return `//www.bilibili.com/read/cv${item.history.cid}`
   }
   return ''
 }
@@ -148,29 +142,23 @@ function getHistoryList(type: Business, view_at = 0 as number) {
   if (noMoreContent.value)
     return
 
-  isLoading.value = true
-  api.history.getHistoryList({
-    type,
-    view_at,
-  })
-    .then((res: HistoryResult) => {
-      if (res.code === 0) {
-        if (Array.isArray(res.data.list) && res.data.list.length > 0)
-          historys.push(...res.data.list)
-
-        if (res.data.list.length < 20) {
-          noMoreContent.value = true
-        }
-      }
-      isLoading.value = false
-    })
+  return run(
+    () => api.history.getHistoryList({ type, view_at }),
+    (res: HistoryResult) => {
+      if (res.code !== 0)
+        throw new Error(res.message)
+      historys.push(...res.data.list)
+      noMoreContent.value = res.data.list.length < 20
+    },
+  )
 }
 
 function deleteHistoryItem(index: number, historyItem: HistoryItem) {
-  api.history.deleteHistoryItem({
-    kid: `${historyItem.history.business}_${historyItem.history.oid}`,
-    csrf: getCSRF(),
-  })
+  api.history
+    .deleteHistoryItem({
+      kid: `${historyItem.history.business}_${historyItem.history.oid}`,
+      csrf: getCSRF(),
+    })
     .then((res) => {
       if (res.code === 0)
         historys.splice(index, 1)
@@ -181,8 +169,10 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
 <template>
   <div
     ref="historysWrap"
-    style="backdrop-filter: var(--bew-filter-glass-1);"
-    h="[calc(100vh-100px)]" max-h-500px important-overflow-y-overlay
+    style="backdrop-filter: var(--bew-filter-glass-1)"
+    h="[calc(100vh-100px)]"
+    max-h-500px
+    important-overflow-y-overlay
     bg="$bew-elevated"
     w="380px"
     rounded="$bew-radius"
@@ -192,7 +182,7 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
   >
     <!-- top bar -->
     <header
-      style="backdrop-filter: var(--bew-filter-glass-1);"
+      style="backdrop-filter: var(--bew-filter-glass-1)"
       flex="~"
       justify="between"
       p="y-4 x-6"
@@ -215,34 +205,32 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
           {{ tab.name }}
         </div>
       </div>
-      <ALink
-        href="https://www.bilibili.com/history"
-        type="topBar"
-        flex="~ items-center"
-      >
+      <ALink href="https://www.bilibili.com/history" type="topBar" flex="~ items-center">
         <span text="sm">{{ $t('common.view_all') }}</span>
       </ALink>
     </header>
 
     <!-- historys wrapper -->
-    <main
-      overflow-hidden rounded="$bew-radius"
-      flex="~ col gap-2"
-      p="x-4"
-    >
+    <main overflow-hidden rounded="$bew-radius" flex="~ col gap-2" p="x-4">
       <!-- loading -->
-      <Loading
-        v-if="isLoading && historys.length === 0"
-        h="full"
-        flex="~ items-center"
-      />
+      <Button
+        v-if="loadFailed"
+        @click="
+          getHistoryList([Business.ARCHIVE, Business.LIVE, Business.ARTICLE][activatedTab], historys.at(-1)?.view_at)
+        "
+      >
+        {{ $t('common.retry') }}
+      </Button>
+      <Loading v-if="isLoading && historys.length === 0" h="full" flex="~ items-center" />
 
       <!-- empty -->
       <Empty
         v-if="!isLoading && historys.length === 0"
         pos="absolute top-0 left-0"
         bg="$bew-content"
-        z="0" w="full" h="full"
+        z="0"
+        w="full"
+        h="full"
         flex="~ items-center"
         rounded="$bew-radius"
       />
@@ -255,7 +243,8 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
           :href="getHistoryUrl(historyItem)"
           class="group"
           type="topBar"
-          m="last:b-4" p="2"
+          m="last:b-4"
+          p="2"
           rounded="$bew-radius"
           hover:bg="$bew-fill-2"
           duration-300
@@ -273,7 +262,10 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
               <!-- Delete button -->
               <div
                 class="group-hover:opacity-100 opacity-0"
-                pos="absolute top-0 right-0" z-1 w-24px h-24px
+                pos="absolute top-0 right-0"
+                z-1
+                w-24px
+                h-24px
                 bg="black opacity-60 hover:$bew-error-color"
                 grid="~ place-items-center"
                 m="1"
@@ -289,11 +281,10 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
               <template v-if="activatedTab === 0">
                 <div pos="relative">
                   <img
-                    w="150px" h-full
+                    w="150px"
+                    h-full
                     class="aspect-video"
-                    :src="`${removeHttpFromUrl(
-                      historyItem.cover,
-                    )}@256w_144h_1c`"
+                    :src="`${removeHttpFromUrl(historyItem.cover)}@256w_144h_1c`"
                     :alt="historyItem.title"
                     object-cover
                   >
@@ -316,11 +307,7 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
                     }}
                   </div>
                 </div>
-                <Progress
-                  :percentage="
-                    (historyItem.progress / historyItem.duration) * 100
-                  "
-                />
+                <Progress :percentage="(historyItem.progress / historyItem.duration) * 100" />
               </template>
 
               <!-- Live -->
@@ -329,9 +316,7 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
                   <img
                     w="150px"
                     class="aspect-video"
-                    :src="`${removeHttpFromUrl(
-                      historyItem.cover,
-                    )}@256w_144h_1c`"
+                    :src="`${removeHttpFromUrl(historyItem.cover)}@256w_144h_1c`"
                     :alt="historyItem.title"
                     bg="contain"
                   >
@@ -367,11 +352,7 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
                 <img
                   w="150px"
                   class="aspect-video"
-                  :src="`${
-                    Array.isArray(historyItem.covers)
-                      ? historyItem.covers[0]
-                      : ''
-                  }@256w_144h_1c`"
+                  :src="`${Array.isArray(historyItem.covers) ? historyItem.covers[0] : ''}@256w_144h_1c`"
                   object-cover
                   :alt="historyItem.title"
                   bg="contain"
@@ -381,27 +362,15 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
 
             <!-- Description -->
             <div>
-              <h3
-                class="keep-two-lines"
-                overflow="hidden"
-                text="ellipsis"
-                break-anywhere
-              >
+              <h3 class="keep-two-lines" overflow="hidden" text="ellipsis" break-anywhere>
                 {{ historyItem.title }}
               </h3>
               <div text="$bew-text-2 sm" m="t-4" flex="~" align="items-center">
-                <ALink
-                  :href="`https://space.bilibili.com/${historyItem.author_mid}`"
-                  type="topBar"
-                >
+                <ALink :href="`https://space.bilibili.com/${historyItem.author_mid}`" type="topBar">
                   {{ historyItem.author_name }}
                 </ALink>
                 <span
-                  v-if="historyItem.live_status === 1"
-                  text="$bew-theme-color"
-                  flex
-                  items-center
-                  gap-1
+                  v-if="historyItem.live_status === 1" text="$bew-theme-color" flex items-center gap-1
                   m="l-2"
                 >
                   LIVE
@@ -409,12 +378,7 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
                 </span>
               </div>
               <p text="$bew-text-2 sm">
-                {{
-                  useDateFormat(
-                    historyItem.view_at * 1000,
-                    'YYYY-MM-DD HH:mm:ss',
-                  ).value
-                }}
+                {{ useDateFormat(historyItem.view_at * 1000, 'YYYY-MM-DD HH:mm:ss').value }}
               </p>
             </div>
           </section>

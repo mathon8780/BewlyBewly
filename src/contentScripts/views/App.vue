@@ -4,12 +4,28 @@ import type { Ref } from 'vue'
 
 import type { BewlyAppProvider } from '~/composables/useAppProvider'
 import { useDark } from '~/composables/useDark'
-import { BEWLY_MOUNTED, DRAWER_VIDEO_ENTER_PAGE_FULL, DRAWER_VIDEO_EXIT_PAGE_FULL, IFRAME_PAGE_SWITCH_BEWLY, IFRAME_PAGE_SWITCH_BILI, OVERLAY_SCROLL_BAR_SCROLL } from '~/constants/globalEvents'
+import {
+  BEWLY_MOUNTED,
+  DRAWER_VIDEO_ENTER_PAGE_FULL,
+  DRAWER_VIDEO_EXIT_PAGE_FULL,
+  IFRAME_PAGE_SWITCH_BEWLY,
+  IFRAME_PAGE_SWITCH_BILI,
+  OVERLAY_SCROLL_BAR_SCROLL,
+} from '~/constants/globalEvents'
 import { AppPage } from '~/enums/appEnums'
 import { settings } from '~/logic'
 import { type DockItem, useMainStore } from '~/stores/mainStore'
 import { useSettingsStore } from '~/stores/settingsStore'
-import { isHomePage, isInIframe, isNotificationPage, isVideoOrBangumiPage, openLinkToNewTab, queryDomUntilFound, scrollToTop } from '~/utils/main'
+import { lazyComponent } from '~/utils/lazyComponent'
+import {
+  isHomePage,
+  isInIframe,
+  isNotificationPage,
+  isVideoOrBangumiPage,
+  openLinkToNewTab,
+  queryDomUntilFound,
+  scrollToTop,
+} from '~/utils/main'
 import emitter from '~/utils/mitt'
 
 import { setupNecessarySettingsWatchers } from './necessarySettingsWatchers'
@@ -28,15 +44,17 @@ function getPageParam(): AppPage | null {
   return null
 }
 
-const activatedPage = ref<AppPage>(getPageParam() || (settings.value.dockItemsConfig.find(e => e.visible === true)?.page || AppPage.Home))
+const activatedPage = ref<AppPage>(
+  getPageParam() || settings.value.dockItemsConfig.find(e => e.visible === true)?.page || AppPage.Home,
+)
 const pages = {
-  [AppPage.Home]: defineAsyncComponent(() => import('./Home/Home.vue')),
-  [AppPage.Search]: defineAsyncComponent(() => import('./Search/Search.vue')),
-  [AppPage.Anime]: defineAsyncComponent(() => import('./Anime/Anime.vue')),
-  [AppPage.History]: defineAsyncComponent(() => import('./History/History.vue')),
-  [AppPage.WatchLater]: defineAsyncComponent(() => import('./WatchLater/WatchLater.vue')),
-  [AppPage.Favorites]: defineAsyncComponent(() => import('./Favorites/Favorites.vue')),
-  [AppPage.Moments]: defineAsyncComponent(() => import('./Moments/Moments.vue')),
+  [AppPage.Home]: lazyComponent(() => import('./Home/Home.vue')),
+  [AppPage.Search]: lazyComponent(() => import('./Search/Search.vue')),
+  [AppPage.Anime]: lazyComponent(() => import('./Anime/Anime.vue')),
+  [AppPage.History]: lazyComponent(() => import('./History/History.vue')),
+  [AppPage.WatchLater]: lazyComponent(() => import('./WatchLater/WatchLater.vue')),
+  [AppPage.Favorites]: lazyComponent(() => import('./Favorites/Favorites.vue')),
+  [AppPage.Moments]: lazyComponent(() => import('./Moments/Moments.vue')),
 }
 const mainAppRef = ref<HTMLElement>() as Ref<HTMLElement>
 const scrollbarRef = ref()
@@ -52,7 +70,25 @@ const iframeDrawerURL = ref<string>('')
 const showIframeDrawer = ref<boolean>(false)
 
 const iframePageRef = ref()
-useEventListener(window, 'message', ({ data }) => {
+const iframePageURL = computed((): string => {
+  // If the iframe is not the BiliBili homepage or in iframe, then don't show the iframe page
+  if (!isHomePage(window.self.location.href) || isInIframe())
+    return ''
+  const currentDockItemConfig = settings.value.dockItemsConfig.find(e => e.page === activatedPage.value)
+  if (currentDockItemConfig) {
+    return currentDockItemConfig.useOriginalBiliPage || !mainStore.getDockItemByPage(activatedPage.value)?.hasBewlyPage
+      ? mainStore.getBiliWebPageURLByPage(activatedPage.value)
+      : ''
+  }
+  return ''
+})
+useEventListener(window, 'message', ({ data, origin, source }) => {
+  if (
+    source !== iframePageRef.value?.iframeRef?.contentWindow
+    || origin !== new URL(iframePageURL.value || location.href).origin
+  ) {
+    return
+  }
   switch (data) {
     case IFRAME_PAGE_SWITCH_BEWLY:
       {
@@ -70,16 +106,7 @@ useEventListener(window, 'message', ({ data }) => {
       break
   }
 })
-const iframePageURL = computed((): string => {
-  // If the iframe is not the BiliBili homepage or in iframe, then don't show the iframe page
-  if (!isHomePage(window.self.location.href) || isInIframe())
-    return ''
-  const currentDockItemConfig = settings.value.dockItemsConfig.find(e => e.page === activatedPage.value)
-  if (currentDockItemConfig) {
-    return currentDockItemConfig.useOriginalBiliPage || !mainStore.getDockItemByPage(activatedPage.value)?.hasBewlyPage ? mainStore.getBiliWebPageURLByPage(activatedPage.value) : ''
-  }
-  return ''
-})
+
 const showBewlyPage = computed((): boolean => {
   if (isInIframe())
     return false
@@ -107,13 +134,15 @@ const showTopBar = computed((): boolean => {
   // reference: https://github.com/BewlyBewly/BewlyBewly/issues/1235
 
   // when using original bilibili homepage, show top bar
-  return settings.value.useOriginalBilibiliHomepage
-  // when on home page and not using original bilibili page, show top bar
+  return (
+    settings.value.useOriginalBilibiliHomepage
+    // when on home page and not using original bilibili page, show top bar
     || (isHomePage() && !settingsStore.getDockItemIsUseOriginalBiliPage(activatedPage.value) && !isInIframe())
-  // when in iframe and using original bilibili page, show top bar
+    // when in iframe and using original bilibili page, show top bar
     || (settingsStore.getDockItemIsUseOriginalBiliPage(activatedPage.value) && isInIframe())
-  // when not on home page, show top bar
+    // when not on home page, show top bar
     || !isHomePage()
+  )
 })
 
 const isFirstTimeActivatedPageChange = ref<boolean>(true)
@@ -138,18 +167,22 @@ watch(
   { immediate: true },
 )
 
-watch([() => showTopBar.value, () => activatedPage.value], () => {
-  // Remove the original Bilibili top bar when using original bilibili page to avoid two top bars showing
-  const biliHeader = document.querySelector('.bili-header') as HTMLElement | null
-  if (biliHeader && isHomePage()) {
-    if (settingsStore.getDockItemIsUseOriginalBiliPage(activatedPage.value) && !isInIframe()) {
-      biliHeader.style.visibility = 'hidden'
+watch(
+  [() => showTopBar.value, () => activatedPage.value],
+  () => {
+    // Remove the original Bilibili top bar when using original bilibili page to avoid two top bars showing
+    const biliHeader = document.querySelector('.bili-header') as HTMLElement | null
+    if (biliHeader && isHomePage()) {
+      if (settingsStore.getDockItemIsUseOriginalBiliPage(activatedPage.value) && !isInIframe()) {
+        biliHeader.style.visibility = 'hidden'
+      }
+      else {
+        biliHeader.style.visibility = 'visible'
+      }
     }
-    else {
-      biliHeader.style.visibility = 'visible'
-    }
-  }
-}, { immediate: true })
+  },
+  { immediate: true },
+)
 
 // Setup necessary settings watchers
 setupNecessarySettingsWatchers()
@@ -163,9 +196,14 @@ onMounted(() => {
   }
 })
 
-useEventListener(document, 'scroll', () => {
-  reachTop.value = window.scrollY === 0
-}, { passive: true })
+useEventListener(
+  document,
+  'scroll',
+  () => {
+    reachTop.value = window.scrollY === 0
+  },
+  { passive: true },
+)
 
 function handleDockItemClick(dockItem: DockItem) {
   // Opening in a new tab while still on the current tab doesn't require changing the `activatedPage`
@@ -204,8 +242,7 @@ function changeActivatePage(pageName: AppPage) {
     if (activatedPage.value !== AppPage.Search) {
       if (scrollTop === 0)
         handleThrottledPageRefresh()
-      else
-        handleThrottledBackToTop()
+      else handleThrottledBackToTop()
     }
     return
   }
@@ -292,10 +329,10 @@ watchEffect((onCleanUp) => {
     if (!(el instanceof HTMLElement))
       return null
     if (el.classList.contains('bpx-state-entered')) {
-      parent.postMessage(DRAWER_VIDEO_ENTER_PAGE_FULL)
+      parent.postMessage(DRAWER_VIDEO_ENTER_PAGE_FULL, location.origin)
     }
     else {
-      parent.postMessage(DRAWER_VIDEO_EXIT_PAGE_FULL)
+      parent.postMessage(DRAWER_VIDEO_EXIT_PAGE_FULL, location.origin)
     }
   })
 
@@ -345,12 +382,11 @@ provide<BewlyAppProvider>('BEWLY_APP', {
 
     <!-- Dock & RightSideButtons -->
     <div
-      v-if="!isInIframe()"
-      pos="absolute top-0 left-0" w-full h-full overflow-hidden
+      v-if="!isInIframe()" pos="absolute top-0 left-0" w-full h-full overflow-hidden
       pointer-events-none
     >
       <Dock
-        v-if="!settings.useOriginalBilibiliHomepage && (settings.alwaysUseDock || (showBewlyPage || iframePageURL))"
+        v-if="!settings.useOriginalBilibiliHomepage && (settings.alwaysUseDock || showBewlyPage || iframePageURL)"
         pointer-events-auto
         :activated-page="activatedPage"
         @settings-visibility-change="toggleSettings"
@@ -358,33 +394,22 @@ provide<BewlyAppProvider>('BEWLY_APP', {
         @back-to-top="handleThrottledBackToTop"
         @dock-item-click="handleDockItemClick"
       />
-      <SideBar
-        v-else
-        pointer-events-auto
-        @settings-visibility-change="toggleSettings"
-      />
+      <SideBar v-else pointer-events-auto @settings-visibility-change="toggleSettings" />
     </div>
 
     <!-- TopBar -->
-    <div
-      v-if="showTopBar"
-      m-auto max-w="$bew-page-max-width"
-    >
+    <div v-if="showTopBar" m-auto max-w="$bew-page-max-width">
       <BewlyOrBiliTopBarSwitcher v-if="settings.showBewlyOrBiliTopBarSwitcher" />
 
-      <OldTopBar
-        v-if="settings.useOldTopBar"
-        pos="top-0 left-0" z="99 hover:1001" w-full
-      />
-      <TopBar
-        v-else
-        pos="top-0 left-0" z="99 hover:1001" w-full
-      />
+      <OldTopBar v-if="settings.useOldTopBar" pos="top-0 left-0" z="99 hover:1001" w-full />
+      <TopBar v-else pos="top-0 left-0" z="99 hover:1001" w-full />
     </div>
 
     <div
       v-if="!settings.useOriginalBilibiliHomepage"
-      pos="absolute top-0 left-0" w-full h-full
+      pos="absolute top-0 left-0"
+      w-full
+      h-full
       :style="{
         height: showBewlyPage || iframePageURL ? '100dvh' : '0',
       }"
@@ -393,10 +418,7 @@ provide<BewlyAppProvider>('BEWLY_APP', {
         <template v-if="showBewlyPage">
           <OverlayScrollbarsComponent ref="scrollbarRef" element="div" h-inherit defer @os-scroll="handleOsScroll">
             <main m-auto max-w="$bew-page-max-width">
-              <div
-                p="t-[calc(var(--bew-top-bar-height)+10px)]" m-auto
-                w="lg:[calc(100%-200px)] [calc(100%-150px)]"
-              >
+              <div p="t-[calc(var(--bew-top-bar-height)+10px)]" m-auto w="lg:[calc(100%-200px)] [calc(100%-150px)]">
                 <Transition name="page-fade">
                   <Component :is="pages[activatedPage]" />
                 </Transition>
@@ -411,11 +433,7 @@ provide<BewlyAppProvider>('BEWLY_APP', {
       </Transition>
     </div>
 
-    <IframeDrawer
-      v-if="showIframeDrawer"
-      :url="iframeDrawerURL"
-      @close="showIframeDrawer = false"
-    />
+    <IframeDrawer v-if="showIframeDrawer" :url="iframeDrawerURL" @close="showIframeDrawer = false" />
   </div>
 </template>
 

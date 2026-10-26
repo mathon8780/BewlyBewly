@@ -6,6 +6,8 @@ import md5 from 'md5'
 import type Browser from 'webextension-polyfill'
 import browser from 'webextension-polyfill'
 
+const activeRequests = new Map<string, AbortController>()
+
 type FetchAfterHandler = ((data: Response) => Promise<any>) | ((data: any) => any)
 
 function toJsonHandler(data: Response): Promise<any> {
@@ -46,6 +48,7 @@ interface _FETCH {
 }
 
 interface API {
+  dedupe?: boolean
   url: string
   _fetch: _FETCH
   params?: {
@@ -63,7 +66,12 @@ interface APIMAP {
 function apiListenerFactory(API_MAP: APIMAP) {
   // Keep this outer function synchronous: Promise<undefined> claims unrelated
   // messages and can race another listener's actual response.
-  return (message: Message | null | undefined, sender?: Browser.Runtime.MessageSender, sendResponse?: Function) => {
+  return (input: unknown, sender?: Browser.Runtime.MessageSender, sendResponse?: Function) => {
+    const message = input as Message | undefined
+    if (message?.cancelRequest) {
+      activeRequests.get(message.cancelRequest)?.abort()
+      return Promise.resolve()
+    }
     const contentScriptQuery = message?.contentScriptQuery
     if (!contentScriptQuery || !Object.prototype.hasOwnProperty.call(API_MAP, contentScriptQuery))
       return
@@ -71,6 +79,8 @@ function apiListenerFactory(API_MAP: APIMAP) {
       return (API_MAP[contentScriptQuery] as APIFunction)(message, sender, sendResponse)
 
     const api = API_MAP[contentScriptQuery] as API
+    if (message?.requestId)
+      activeRequests.set(message.requestId, new AbortController())
 
     // Chromium has no cookies permission. Without a reliable account snapshot,
     // skip deduplication so even a login change in one tab cannot reuse a GET.
@@ -81,10 +91,17 @@ function apiListenerFactory(API_MAP: APIMAP) {
     // Include the current cookie context in the key, including login changes while
     // an older GET is pending. Never share results between Firefox containers.
     const cookieStoreId = sender?.tab?.cookieStoreId
-    return browser.cookies.getAll({ url: api.url, ...(cookieStoreId ? { storeId: cookieStoreId } : {}) }).then((cookies) => {
-      const accountContext = `${cookieStoreId || 'default'}:${md5(JSON.stringify(cookies.map(cookie => [cookie.name, cookie.value, cookie.domain, cookie.path]).sort()))}`
-      return doRequest(message!, api, sendResponse, cookies, accountContext)
-    })
+    return browser.cookies
+      .getAll({ url: api.url, ...(cookieStoreId ? { storeId: cookieStoreId } : {}) })
+      .then((cookies) => {
+        const accountContext = `${cookieStoreId || 'default'}:${md5(JSON.stringify(cookies.map(cookie => [cookie.name, cookie.value, cookie.domain, cookie.path]).sort()))}`
+        return doRequest(message!, api, sendResponse, cookies, accountContext)
+      })
+      .catch((error) => {
+        if (message?.requestId)
+          activeRequests.delete(message.requestId)
+        throw error
+      })
   }
 }
 
@@ -93,8 +110,14 @@ const MAX_IN_FLIGHT = 256
 // Pending GETs only: no completed responses or account data cache.
 const inFlight = new Map<string, Promise<any>>()
 
-async function doRequest(message: Message, api: API, sendResponse?: Function, cookies?: Browser.Cookies.Cookie[], accountContext?: string) {
-  const { contentScriptQuery, ...rest } = message
+async function doRequest(
+  message: Message,
+  api: API,
+  sendResponse?: Function,
+  cookies?: Browser.Cookies.Cookie[],
+  accountContext?: string,
+) {
+  const { contentScriptQuery, requestId, ...rest } = message
   const { _fetch, params = {}, afterHandle } = api
   let { url } = api
   const { method, body } = _fetch
@@ -106,8 +129,7 @@ async function doRequest(message: Message, api: API, sendResponse?: Function, co
   Object.keys(rest).forEach((key) => {
     if (body && body[key] !== undefined)
       targetBody[key] = rest[key]
-    else
-      targetParams[key] = rest[key]
+    else targetParams[key] = rest[key]
   })
   const urlParams = new URLSearchParams()
   for (const key in targetParams) {
@@ -124,10 +146,15 @@ async function doRequest(message: Message, api: API, sendResponse?: Function, co
   if (cookies)
     headers['firefox-multi-account-cookie'] = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
 
-  const key = isGET && accountContext ? JSON.stringify([accountContext, contentScriptQuery, url, headers]) : undefined
+  const key
+    = isGET && api.dedupe !== false && !requestId && accountContext
+      ? JSON.stringify([accountContext, contentScriptQuery, url, headers])
+      : undefined
   let pending = key ? inFlight.get(key) : undefined
   if (!pending) {
-    const controller = new AbortController()
+    const controller = activeRequests.get(requestId) || new AbortController()
+    if (requestId)
+      activeRequests.set(requestId, controller)
     let timer: ReturnType<typeof setTimeout>
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
@@ -136,7 +163,12 @@ async function doRequest(message: Message, api: API, sendResponse?: Function, co
       }, REQUEST_TIMEOUT)
     })
     const request = (async () => {
-      let result: any = await fetch(url, { method, headers, ...(!isGET ? { body: targetBody } : {}), signal: controller.signal })
+      let result: any = await fetch(url, {
+        method,
+        headers,
+        ...(!isGET ? { body: targetBody } : {}),
+        signal: controller.signal,
+      })
       if (!result.ok)
         throw new Error(`Background request failed with HTTP ${result.status}`)
       for (const handler of afterHandle) {
@@ -145,7 +177,11 @@ async function doRequest(message: Message, api: API, sendResponse?: Function, co
       }
       return result
     })()
-    pending = Promise.race([request, timeout]).finally(() => clearTimeout(timer))
+    pending = Promise.race([request, timeout]).finally(() => {
+      clearTimeout(timer)
+      if (requestId)
+        activeRequests.delete(requestId)
+    })
     if (key && inFlight.size < MAX_IN_FLIGHT) {
       inFlight.set(key, pending)
       // Handle both outcomes; using an ignored finally would create a rejection.

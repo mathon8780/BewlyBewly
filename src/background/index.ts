@@ -1,6 +1,7 @@
 import browser from 'webextension-polyfill'
 
 import { setupApiMsgLstnrs } from './messageListeners/api'
+import { setupStorageMessages } from './messageListeners/storage'
 import { setupTabMsgLstnrs } from './messageListeners/tabs'
 
 browser.runtime.onInstalled.addListener(async () => {
@@ -22,10 +23,18 @@ if (process.env.FIREFOX) {
         const extensionUri = isExtensionUri(details.documentUrl)
         details.requestHeaders = details.requestHeaders || []
         for (let i = 0; i < details.requestHeaders.length; i++) {
-          if (details.requestHeaders[i].name.toLowerCase() === 'origin' || details.requestHeaders[i].name.toLowerCase() === 'referer')
-            requestHeaders.push({ name: details.requestHeaders[i].name, value: extensionUri ? 'https://www.bilibili.com' : url.origin })
-          else
+          if (
+            details.requestHeaders[i].name.toLowerCase() === 'origin'
+            || details.requestHeaders[i].name.toLowerCase() === 'referer'
+          ) {
+            requestHeaders.push({
+              name: details.requestHeaders[i].name,
+              value: extensionUri ? 'https://www.bilibili.com' : url.origin,
+            })
+          }
+          else {
             requestHeaders.push(details.requestHeaders[i])
+          }
 
           if (details.requestHeaders[i].name === 'firefox-multi-account-cookie') {
             requestHeaders.push({ name: 'cookie', value: details.requestHeaders[i].value })
@@ -35,7 +44,7 @@ if (process.env.FIREFOX) {
         return { ...details, requestHeaders }
       }
     },
-    { urls: ['<all_urls>'] },
+    { urls: ['*://*.bilibili.com/*'] },
     ['blocking', 'requestHeaders'],
   )
 }
@@ -43,3 +52,4 @@ if (process.env.FIREFOX) {
 // Setup all message listeners
 setupApiMsgLstnrs()
 setupTabMsgLstnrs()
+setupStorageMessages()

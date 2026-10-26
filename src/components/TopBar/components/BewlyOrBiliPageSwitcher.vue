@@ -43,9 +43,8 @@ function switchPage(useOriginalBiliPage: boolean) {
 
   if (isInIframe()) {
     if (useOriginalBiliPage)
-      parent.postMessage(IFRAME_PAGE_SWITCH_BILI, '*')
-    else
-      parent.postMessage(IFRAME_PAGE_SWITCH_BEWLY, '*')
+      parent.postMessage(IFRAME_PAGE_SWITCH_BILI, 'https://www.bilibili.com')
+    else parent.postMessage(IFRAME_PAGE_SWITCH_BEWLY, 'https://www.bilibili.com')
   }
 }
 </script>
@@ -55,18 +54,26 @@ function switchPage(useOriginalBiliPage: boolean) {
     v-if="showBewlyOrBiliPageSwitcher"
     class="bewly-bili-switcher"
     :class="{ 'disable-frosted-glass': settings.disableFrostedGlass }"
-    style="backdrop-filter: var(--bew-filter-glass-1);"
-    flex="~ gap-1" bg="$bew-elevated" p-1 rounded-full
+    style="backdrop-filter: var(--bew-filter-glass-1)"
+    flex="~ gap-1"
+    bg="$bew-elevated"
+    p-1
+    rounded-full
     h-34px
   >
     <button
-      v-for="option in options" :key="option.name"
+      v-for="option in options"
+      :key="option.name"
       class="bewly-bili-switcher-button"
       :class="{
         active: option.useOriginalBiliPage === isInIframe(),
       }"
-      rounded-inherit text="$bew-text-2 hover:$bew-text-1 xs" p="x-2 lg:x-4" bg="hover:$bew-fill-2"
-      fw-bold duration-300
+      rounded-inherit
+      text="$bew-text-2 hover:$bew-text-1 xs"
+      p="x-2 lg:x-4"
+      bg="hover:$bew-fill-2"
+      fw-bold
+      duration-300
       @click="switchPage(option.useOriginalBiliPage)"
     >
       <span class="hidden lg:block">

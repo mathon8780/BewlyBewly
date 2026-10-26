@@ -31,20 +31,22 @@ const hoveringDockItem = reactive<HoveringDockItem>({
   settings: false,
 })
 
-watch(() => settings.value.autoHideSidebar, (newValue) => {
-  if (newValue)
-    hideSidebar.value = true
-  else
-    hideSidebar.value = false
-}, {
-  immediate: true,
-})
+watch(
+  () => settings.value.autoHideSidebar,
+  (newValue) => {
+    if (newValue)
+      hideSidebar.value = true
+    else hideSidebar.value = false
+  },
+  {
+    immediate: true,
+  },
+)
 
 function toggleHideSidebar(hide: boolean) {
   if (settings.value.autoHideSidebar)
     hideSidebar.value = hide
-  else
-    hideSidebar.value = false
+  else hideSidebar.value = false
 }
 </script>
 
@@ -55,8 +57,13 @@ function toggleHideSidebar(hide: boolean) {
       'right-side': settings.sidebarPosition === 'right',
       'hide': hideSidebar,
     }"
-    pos="fixed top-0" h-full flex items-center px-6px
-    z-10 pointer-events-none
+    pos="fixed top-0"
+    h-full
+    flex
+    items-center
+    px-6px
+    z-10
+    pointer-events-none
   >
     <!-- Edge Div -->
     <div
@@ -69,7 +76,7 @@ function toggleHideSidebar(hide: boolean) {
     />
 
     <div
-      ref="sideBarContentRef"
+      :ref="(element) => (sideBarContentRef = element as HTMLElement)"
       class="sidebar-content"
       :class="{
         hover: sideBarContentHover,
@@ -81,8 +88,10 @@ function toggleHideSidebar(hide: boolean) {
       <Tooltip :content="isDark ? $t('dock.dark_mode') : $t('dock.light_mode')" placement="left">
         <Button
           class="ctrl-btn"
-          style="backdrop-filter: var(--bew-filter-glass-1);"
-          center size="small" round
+          style="backdrop-filter: var(--bew-filter-glass-1)"
+          center
+          size="small"
+          round
           @click="toggleDark"
           @mouseenter="hoveringDockItem.themeMode = true"
           @mouseleave="hoveringDockItem.themeMode = false"
@@ -104,15 +113,14 @@ function toggleHideSidebar(hide: boolean) {
       <Tooltip :content="$t('dock.settings')" placement="left">
         <Button
           class="ctrl-btn group"
-          style="backdrop-filter: var(--bew-filter-glass-1);"
-          center size="small" round
+          style="backdrop-filter: var(--bew-filter-glass-1)"
+          center
+          size="small"
+          round
           @click="emit('settings-visibility-change')"
         >
           <div mt--2px>
-            <i
-              i-mingcute:settings-3-line w-20px h-20px group-hover:rotate-180
-              transition="all 2000 ease-out"
-            />
+            <i i-mingcute:settings-3-line w-20px h-20px group-hover:rotate-180 transition="all 2000 ease-out" />
           </div>
         </Button>
       </Tooltip>

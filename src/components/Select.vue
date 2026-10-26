@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onClickOutside } from '@vueuse/core'
+
 const props = defineProps<{
   options: OptionType[]
   modelValue: any
@@ -11,49 +13,31 @@ interface OptionType {
   label: string
 }
 
-const label = ref<string>('')
-const showOptions = ref<boolean>(false)
-
-onUpdated(() => {
-  // fix the issue when the dropdown menu text doesn't update in real-time based on the updated page language
-  if (props.options)
-    label.value = `${props.options.find((item: OptionType) => item.value === props.modelValue)?.label}`
+const label = computed(() => props.options.find(item => item.value === props.modelValue)?.label || '')
+const showOptions = ref(false)
+const root = ref<HTMLElement>()
+onClickOutside(root, () => {
+  showOptions.value = false
 })
-
-onMounted(() => {
-  if (props.options)
-    label.value = `${props.options.find((item: OptionType) => item.value === props.modelValue)?.label}`
-})
-
 function onClickOption(val: OptionType) {
-  window.removeEventListener('click', () => {})
-  label.value = val.label
   emit('update:modelValue', val.value)
   emit('change', val.value)
   showOptions.value = false
 }
-
-function closeOptions() {
-  showOptions.value = false
-}
-
-/** when you click on it outside, the selection option will be turned off  */
-function onMouseLeave() {
-  window.addEventListener('click', closeOptions)
-}
-
-function onMouseEnter() {
-  window.removeEventListener('click', closeOptions)
+function moveOption(direction: number) {
+  const index = props.options.findIndex(item => item.value === props.modelValue)
+  const next = (index + direction + props.options.length) % props.options.length
+  if (props.options[next])
+    onClickOption(props.options[next])
 }
 </script>
 
 <template>
-  <div
-    pos="relative"
-    @mouseleave="onMouseLeave"
-    @mouseenter="onMouseEnter"
-  >
-    <div
+  <div ref="root" pos="relative">
+    <button
+      type="button"
+      role="combobox"
+      :aria-expanded="showOptions"
       p="x-4 y-2"
       bg="$bew-fill-1"
       rounded="$bew-radius"
@@ -61,16 +45,16 @@ function onMouseEnter() {
       cursor="pointer"
       flex="~"
       justify="between"
-      items="center" w="full"
-      :ring="showOptions ? '2px $bew-theme-color' : ''" duration-300
+      items="center"
+      w="full"
+      :ring="showOptions ? '2px $bew-theme-color' : ''"
+      duration-300
+      @keydown.down.prevent="moveOption(1)"
+      @keydown.up.prevent="moveOption(-1)"
+      @keydown.esc.prevent="showOptions = false"
       @click="showOptions = !showOptions"
     >
-      <div
-        truncate
-        overflow="hidden"
-        m="r-2"
-        v-text="label === 'undefined' ? '' : label"
-      />
+      <div truncate overflow="hidden" m="r-2" v-text="label" />
 
       <!-- arrow -->
       <div
@@ -82,15 +66,24 @@ function onMouseEnter() {
         :transform="`~ ${!showOptions ? 'rotate-45 -translate-y-1/4' : 'rotate-225 translate-y-1/4'} `"
         transition="all duration-300"
       />
-    </div>
+    </button>
     <Transition name="dropdown">
       <div
         v-if="showOptions"
         style="backdrop-filter: var(--bew-filter-glass-1)"
-        pos="absolute" bg="$bew-elevated" shadow="$bew-shadow-2" p="2"
+        pos="absolute"
+        bg="$bew-elevated"
+        shadow="$bew-shadow-2"
+        p="2"
         m="t-2"
-        rounded="$bew-radius" z="1" flex="~ col gap-1"
-        w="full" max-h-300px overflow-y-overlay will-change-transform transform-gpu
+        rounded="$bew-radius"
+        z="1"
+        flex="~ col gap-1"
+        w="full"
+        max-h-300px
+        overflow-y-overlay
+        will-change-transform
+        transform-gpu
       >
         <div
           v-for="option in options"
@@ -110,5 +103,4 @@ function onMouseEnter() {
   </div>
 </template>
 
-<style lang="scss" scoped>
-</style>
+<style lang="scss" scoped></style>

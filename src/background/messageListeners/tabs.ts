@@ -9,9 +9,12 @@ export enum TABS_MESSAGE {
   OPEN_LINK_IN_BACKGROUND = 'openLinkInBackground',
 }
 
-function handleMessage(message: Message | null | undefined) {
+function handleMessage(input: unknown) {
+  const message = input as Message | undefined
   if (message?.contentScriptQuery === TABS_MESSAGE.OPEN_LINK_IN_BACKGROUND) {
-    return browser.tabs.create({ url: message.url, active: false })
+    const url = new URL(message.url)
+    if (url.protocol === 'https:' || url.protocol === 'http:')
+      return browser.tabs.create({ url: url.href, active: false })
   }
 }
 

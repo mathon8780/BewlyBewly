@@ -149,9 +149,9 @@ export interface Producer {
 }
 
 export interface Publish {
-  pub_time: Date
+  pub_time: string | Date
   pub_time_show: string
-  release_date: Date
+  release_date: string | Date
   release_date_show: string
   pub_time_show_db?: string
 }
@@ -172,8 +172,7 @@ export interface Rights {
   allow_bp_rank?: number
 }
 
-export interface DemandEndTime {
-}
+export interface DemandEndTime {}
 
 export enum SeasonTypeName {
   国创 = '国创',

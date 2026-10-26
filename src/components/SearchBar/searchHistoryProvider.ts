@@ -106,7 +106,7 @@ export async function getSearchHistory(): Promise<HistoryItem[]> {
       ? historySort(history.filter(item => typeof item?.value === 'string' && typeof item?.timestamp === 'number')).slice(0, SEARCH_HISTORY_LIMIT)
       : []
   }
-  catch (error) {
+  catch {
     return []
   }
 }

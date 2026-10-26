@@ -1,4 +1,7 @@
 <script lang="ts" setup>
+defineOptions({ inheritAttrs: false })
+const props = withDefaults(defineProps<Props>(), { size: 'medium' })
+defineEmits(['enter'])
 type Size = 'small' | 'medium' | 'large'
 interface Props {
   size?: Size
@@ -7,10 +10,6 @@ interface Props {
   max?: number
   placeholder?: string
 }
-const props = withDefaults(defineProps<Props>(), { size: 'medium' })
-
-defineEmits(['enter'])
-
 const modelValue = defineModel<string | number>()
 
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -43,8 +42,11 @@ defineExpose({ focus })
     :style="{ height, padding }"
     focus-within:ring="2px $bew-theme-color"
     p="x-4"
-    rounded="$bew-radius" transition-all duration-300
-    bg="$bew-fill-1" flex="~ gap-2"
+    rounded="$bew-radius"
+    transition-all
+    duration-300
+    bg="$bew-fill-1"
+    flex="~ gap-2"
   >
     <div v-if="$slots.prefix" class="prefix">
       <div>
@@ -54,14 +56,18 @@ defineExpose({ focus })
 
     <input
       ref="inputRef"
+      v-bind="$attrs"
       v-model="modelValue"
       :style="{ lineHeight: height }"
       :type="type"
       :min="min"
       :max="max"
       :placeholder="placeholder"
-      w-inherit h-inherit
-      outline-none flex-1 bg-transparent
+      w-inherit
+      h-inherit
+      outline-none
+      flex-1
+      bg-transparent
       @keydown.enter="$emit('enter')"
     >
 

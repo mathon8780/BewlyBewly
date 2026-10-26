@@ -1,6 +1,6 @@
 import type { ErrorPayload, HMRPayload, Update } from 'vite'
-import type { InferCustomEventPayload } from 'vite/types/customEvent'
-import type { ViteHotContext } from 'vite/types/hot'
+import type { InferCustomEventPayload } from 'vite/types/customEvent.d.ts'
+import type { ViteHotContext } from 'vite/types/hot.d.ts'
 
 // Vite v3 doesn't export overlay
 // import { ErrorOverlay, overlayId } from 'vite/src/client/overlay'
@@ -152,10 +152,8 @@ async function handleMessage(payload: HMRPayload) {
 
       break
     }
-    default: {
-      const check: never = payload
-      return check
-    }
+    case 'ping':
+      break
   }
 }
 
@@ -197,8 +195,8 @@ async function queueUpdate(p: Promise<(() => void) | undefined>) {
     await Promise.resolve()
     pending = false
     const loading = [...queued]
-    queued = [];
-    (await Promise.all(loading)).forEach(fn => fn && fn())
+    queued = []
+    ;(await Promise.all(loading)).forEach(fn => fn && fn())
   }
 }
 
@@ -210,7 +208,7 @@ async function waitForSuccessfulPing(ms = 1000) {
       await fetch(`${location.protocol}//${socketHost}`)
       break
     }
-    catch (e) {
+    catch {
       // wait ms before attempting to ping again
       await new Promise(resolve => setTimeout(resolve, ms))
     }
@@ -224,7 +222,7 @@ const supportsConstructedSheet = (() => {
   // try {
   //   new CSSStyleSheet()
   //   return true
-  // } catch (e) {}
+  // } catch {}
   return false
 })()
 
@@ -271,9 +269,7 @@ export function removeStyle(id: string): void {
   if (style) {
     if (style instanceof CSSStyleSheet)
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s: CSSStyleSheet) => s !== style)
-
-    else
-      document.head.removeChild(style)
+    else document.head.removeChild(style)
 
     sheetsMap.delete(id)
   }
@@ -397,7 +393,7 @@ export function createHotContext(ownerPath: string): ViteHotContext {
   const newListeners = new Map()
   ctxToListenersMap.set(ownerPath, newListeners)
 
-  function acceptDeps(deps: string[], callback: HotCallback['fn'] = () => { }) {
+  function acceptDeps(deps: string[], callback: HotCallback['fn'] = () => {}) {
     const mod: HotModule = hotModulesMap.get(ownerPath) || {
       id: ownerPath,
       callbacks: [],

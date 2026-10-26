@@ -1,5 +1,6 @@
 import type { App, Component, Plugin } from 'vue'
-import { defineAsyncComponent } from 'vue'
+
+import { lazyComponent } from '~/utils/lazyComponent'
 
 const paths = import.meta.glob<{ default: Component }>(['./*/*.vue', './*.vue', './OverlayScrollbarsComponent.ts'])
 
@@ -8,7 +9,7 @@ export default {
     for (const path in paths) {
       const splitPath = path.split('/')
       const name = splitPath[splitPath.length - 1].replace('.vue', '').replace('.ts', '')
-      app.component(name, defineAsyncComponent(paths[path]))
+      app.component(name, lazyComponent(paths[path]))
     }
   },
 } as Plugin

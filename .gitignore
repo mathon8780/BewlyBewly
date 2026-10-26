@@ -17,3 +17,5 @@ node_modules
 .pnpm-store/
 web-ext-profile
 extension-safari-macos/
+/Content-Display/
+/feedback/

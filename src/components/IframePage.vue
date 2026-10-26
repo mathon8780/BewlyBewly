@@ -11,28 +11,38 @@ const currentUrl = ref<string>(props.url)
 const showIframe = ref<boolean>(false)
 const showLoading = ref<boolean>(false)
 
-watch(() => isDark.value, (newValue) => {
-  iframeRef.value?.contentDocument?.documentElement.classList.toggle('dark', newValue)
-  iframeRef.value?.contentDocument?.body?.classList.toggle('dark', newValue)
-})
+watch(
+  () => isDark.value,
+  (newValue) => {
+    iframeRef.value?.contentDocument?.documentElement.classList.toggle('dark', newValue)
+    iframeRef.value?.contentDocument?.body?.classList.toggle('dark', newValue)
+  },
+)
 
-watch(() => props.url, () => {
-  showIframe.value = false
-})
+watch(
+  () => props.url,
+  () => {
+    showIframe.value = false
+  },
+)
 
 // Only show loading animation after 1.5 seconds to prevent annoying flash when content loads quickly
 const showLoadingTimeout = ref()
-watch(() => showIframe.value, async (newValue) => {
-  clearTimeout(showLoadingTimeout.value)
-  if (!newValue) {
-    showLoadingTimeout.value = setTimeout(() => {
-      showLoading.value = true
-    }, 1500)
-  }
-  else {
-    showLoading.value = false
-  }
-}, { immediate: true })
+watch(
+  () => showIframe.value,
+  async (newValue) => {
+    clearTimeout(showLoadingTimeout.value)
+    if (!newValue) {
+      showLoadingTimeout.value = setTimeout(() => {
+        showLoading.value = true
+      }, 1500)
+    }
+    else {
+      showLoading.value = false
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   nextTick(() => {
@@ -41,6 +51,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(showLoadingTimeout.value)
   releaseIframeResources()
 })
 
@@ -78,15 +89,14 @@ function handleRefresh() {
 }
 
 defineExpose({
+  iframeRef,
   handleBackToTop,
   handleRefresh,
 })
 </script>
 
 <template>
-  <div
-    pos="relative top-0 left-0" of-hidden w-full h-full
-  >
+  <div pos="relative top-0 left-0" of-hidden w-full h-full>
     <Transition name="fade">
       <Loading v-if="showLoading" w-full h-full pos="absolute top-0 left-0" />
     </Transition>
@@ -102,13 +112,12 @@ defineExpose({
         frameborder="0"
         pointer-events-auto
         pos="absolute left-0"
-        w-inherit h-inherit
+        w-inherit
+        h-inherit
         @load="showIframe = true"
       />
     </Transition>
   </div>
 </template>
 
-<style lang="scss" scoped>
-
-</style>
+<style lang="scss" scoped></style>

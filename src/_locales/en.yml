@@ -1,4 +1,6 @@
 common:
+  load_failed: Could not load this view
+  loaded_items: Loaded {count} items
   continue_browsing: Continue with next group
   retry: Try again
   view_all: View ALL
@@ -56,6 +58,10 @@ iframe_drawer:
   press_esc_again_to_close: Press Esc again to close
 
 settings:
+  clear_unused_wallpapers: Clear unused wallpapers
+  group_blocking: Blocking
+  block_at_comments: 'Hide top-level comments containing {''@''}'
+  block_at_comments_desc: 'Check only top-level comment text. If it contains {''@''}, hide the entire thread, including replies. Replies are not checked separately.'
   title: Settings
 
   # Settings menu
@@ -429,6 +435,10 @@ video_card:
   video_removed: Video removed
 
 home:
+  series_plays: Plays
+  series_episodes: Episodes
+  series_air_date: First aired
+  series_details: Show series details
   tell_us_why: Choose a reason why
   not_interested_desc: You can use <kbd>↑</kbd> and <kbd>↓</kbd> to choose the reason, or using number keys to choose the reason directly, press <kbd>Enter</kbd> to confirm.
 

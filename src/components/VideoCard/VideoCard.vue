@@ -51,15 +51,14 @@ const videoOptionsFloatingStyles = ref<CSSProperties>({})
 const cardState = useVideoCardState(() => props.video)
 const removed = computed({
   get: () => cardState.value.removed,
-  set: value => cardState.value.removed = value,
+  set: value => (cardState.value.removed = value),
 })
 
 const moreBtnRef = ref<HTMLDivElement | null>(null)
-const contextMenuRef = ref<HTMLDivElement | null>(null)
 
 const selectedDislikeOpt = computed({
   get: () => cardState.value.selectedDislikeOpt,
-  set: value => cardState.value.selectedDislikeOpt = value,
+  set: value => (cardState.value.selectedDislikeOpt = value),
 })
 
 const videoCurrentTime = ref<number | null>(null)
@@ -76,13 +75,12 @@ const videoUrl = computed(() => {
     return `https://www.bilibili.com/bangumi/play/ep${props.video.epid}`
   else if (props.video.roomid)
     return `https://live.bilibili.com/${props.video.roomid}`
-  else
-    return ''
+  else return ''
 })
 
 const isInWatchLater = computed({
   get: () => cardState.value.isInWatchLater,
-  set: value => cardState.value.isInWatchLater = value,
+  set: value => (cardState.value.isInWatchLater = value),
 })
 const isHover = ref<boolean>(false)
 let mouseEnterTimeout: ReturnType<typeof setTimeout>
@@ -94,27 +92,42 @@ const previewEnabled = computed(() => props.showPreview && settings.value.enable
 let previewGeneration = 0
 let alive = true
 
-watch([isHover, previewEnabled, () => props.video?.bvid, () => props.video?.aid, () => props.video?.cid], async () => {
-  const generation = ++previewGeneration
-  const video = props.video
-  if (!alive || !video || !isHover.value || !previewEnabled.value
-    || previewVideoUrl.value || !(video.aid || video.bvid)) {
-    return
-  }
-  try {
-    const url = await getPreviewUrl(video)
-    if (alive && isHover.value && generation === previewGeneration)
-      previewVideoUrl.value = url
-  }
-  catch {
-    // Preview is optional; a later hover can retry a failed or timed-out request.
-  }
-})
-watch([() => props.video?.bvid, () => props.video?.aid, () => props.video?.id, () => props.video?.cid], () => {
-  previewVideoUrl.value = ''
-  videoCurrentTime.value = null
-  handelMouseLeave()
-}, { flush: 'sync' })
+watch(
+  [isHover, previewEnabled, () => props.video?.bvid, () => props.video?.aid, () => props.video?.cid],
+  async (_, __, onCleanup) => {
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    const generation = ++previewGeneration
+    const video = props.video
+    if (
+      !alive
+      || !video
+      || !isHover.value
+      || !previewEnabled.value
+      || previewVideoUrl.value
+      || !(video.aid || video.bvid)
+    ) {
+      return
+    }
+    try {
+      const url = await getPreviewUrl(video, controller.signal)
+      if (alive && isHover.value && generation === previewGeneration)
+        previewVideoUrl.value = url
+    }
+    catch {
+      // Preview is optional; a later hover can retry a failed or timed-out request.
+    }
+  },
+)
+watch(
+  [() => props.video?.bvid, () => props.video?.aid, () => props.video?.id, () => props.video?.cid],
+  () => {
+    previewVideoUrl.value = ''
+    videoCurrentTime.value = null
+    handelMouseLeave()
+  },
+  { flush: 'sync' },
+)
 
 function stopPreview() {
   previewGeneration++
@@ -134,27 +147,27 @@ function toggleWatchLater() {
   const state = cardState.value
 
   if (!isInWatchLater.value) {
-    api.watchlater.saveToWatchLater({
-      aid: props.video.id,
-      csrf: getCSRF(),
-    })
+    api.watchlater
+      .saveToWatchLater({
+        aid: props.video.id,
+        csrf: getCSRF(),
+      })
       .then((res) => {
         if (res.code === 0)
           state.isInWatchLater = true
-        else
-          toast.error(res.message)
+        else toast.error(res.message)
       })
   }
   else {
-    api.watchlater.removeFromWatchLater({
-      aid: props.video.id,
-      csrf: getCSRF(),
-    })
+    api.watchlater
+      .removeFromWatchLater({
+        aid: props.video.id,
+        csrf: getCSRF(),
+      })
       .then((res) => {
         if (res.code === 0)
           state.isInWatchLater = false
-        else
-          toast.error(res.message)
+        else toast.error(res.message)
       })
   }
 }
@@ -165,9 +178,12 @@ function handleMouseEnter() {
 
   // fix #789
   contentVisibility.value = 'visible'
-  mouseEnterTimeout = setTimeout(() => {
-    isHover.value = true
-  }, settings.value.hoverVideoCardDelayed ? 1200 : 500)
+  mouseEnterTimeout = setTimeout(
+    () => {
+      isHover.value = true
+    },
+    settings.value.hoverVideoCardDelayed ? 1200 : 500,
+  )
 }
 
 function handelMouseLeave() {
@@ -224,17 +240,19 @@ function handleUndo() {
       appkey: TVAppKey.appkey,
     }
 
-    api.video.undoDislikeVideo({
-      ...params,
-      sign: getTvSign(params),
-    }).then((res) => {
-      if (res.code === 0) {
-        state.removed = false
-      }
-      else {
-        toast.error(res.message)
-      }
-    })
+    api.video
+      .undoDislikeVideo({
+        ...params,
+        sign: getTvSign(params),
+      })
+      .then((res) => {
+        if (res.code === 0) {
+          state.removed = false
+        }
+        else {
+          toast.error(res.message)
+        }
+      })
   }
   else {
     state.removed = false
@@ -253,7 +271,8 @@ provide('getVideoType', () => props.type!)
   <div
     :style="{ contentVisibility }"
     intrinsic-size-300px
-    duration-300 ease-in-out
+    duration-300
+    ease-in-out
     rounded="$bew-radius"
     ring="hover:8 hover:$bew-fill-2 active:8 active:$bew-fill-3"
     bg="hover:$bew-fill-2 active:$bew-fill-3"
@@ -261,11 +280,7 @@ provide('getVideoType', () => props.type!)
     mb-4
   >
     <div v-if="!skeleton && video">
-      <div
-        class="video-card group"
-        w="full"
-        rounded="$bew-radius"
-      >
+      <div class="video-card group" w="full" rounded="$bew-radius">
         <ALink
           :style="{ display: horizontal ? 'flex' : 'block', gap: horizontal ? '1.5rem' : '0' }"
           :href="videoUrl"
@@ -280,7 +295,10 @@ provide('getVideoType', () => props.type!)
             class="group/cover"
             :class="horizontal ? 'horizontal-card-cover' : 'vertical-card-cover'"
             shrink-0
-            h-fit relative bg="$bew-skeleton" rounded="$bew-radius"
+            h-fit
+            relative
+            bg="$bew-skeleton"
+            rounded="$bew-radius"
             cursor-pointer
             group-hover:z-2
             transform="~ translate-z-0"
@@ -289,22 +307,31 @@ provide('getVideoType', () => props.type!)
             <Picture
               :src="`${removeHttpFromUrl(video.cover)}@672w_378h_1c_!web-home-common-cover`"
               :loading="coverLoading"
-              w="full" max-w-full align-middle aspect-video object-cover
+              w="full"
+              max-w-full
+              align-middle
+              aspect-video
+              object-cover
               rounded="$bew-radius"
             />
 
             <div
               v-if="removed"
-              pos="absolute top-0 left-0" w-full h-fit aspect-video flex="~ col gap-2 items-center justify-center"
-              bg="$bew-fill-4" backdrop-blur-20px mix-blend-luminosity rounded="$bew-radius" z-2
+              pos="absolute top-0 left-0"
+              w-full
+              h-fit
+              aspect-video
+              flex="~ col gap-2 items-center justify-center"
+              bg="$bew-fill-4"
+              backdrop-blur-20px
+              mix-blend-luminosity
+              rounded="$bew-radius"
+              z-2
             >
               <p mb-2 color-white text-lg>
                 {{ $t('video_card.video_removed') }}
               </p>
-              <Button
-                color="rgba(255,255,255,.35)" text-color="white" size="small"
-                @click.prevent.stop="handleUndo"
-              >
+              <Button color="rgba(255,255,255,.35)" text-color="white" size="small" @click.prevent.stop="handleUndo">
                 <template #left>
                   <div i-mingcute-back-line text-lg />
                 </template>
@@ -317,10 +344,15 @@ provide('getVideoType', () => props.type!)
               <video
                 v-if="previewVideoUrl && isHover"
                 ref="videoElement"
-                autoplay muted
+                autoplay
+                muted
                 :controls="settings.enableVideoCtrlBarOnVideoCard"
                 :style="{ pointerEvents: settings.enableVideoCtrlBarOnVideoCard ? 'auto' : 'none' }"
-                pos="absolute top-0 left-0" w-full aspect-video rounded="$bew-radius" bg-black
+                pos="absolute top-0 left-0"
+                w-full
+                aspect-video
+                rounded="$bew-radius"
+                bg-black
                 @mouseenter="handleMouseEnter"
               >
                 <source :src="previewVideoUrl" type="video/mp4">
@@ -328,26 +360,33 @@ provide('getVideoType', () => props.type!)
             </Transition>
 
             <!-- Ranking Number -->
-            <div
-              v-if="video.rank"
-              pos="absolute top-0"
-              p-2 group-hover:opacity-0
-              duration-300
-            >
+            <div v-if="video.rank" pos="absolute top-0" p-2 group-hover:opacity-0 duration-300>
               <div
                 v-if="Number(video.rank) <= 3"
-                bg="$bew-theme-color" text-center lh-0 h-30px w-30px
-                text-white rounded="1/2" shadow="$bew-shadow-1"
+                bg="$bew-theme-color"
+                text-center
+                lh-0
+                h-30px
+                w-30px
+                text-white
+                rounded="1/2"
+                shadow="$bew-shadow-1"
                 border="1 $bew-theme-color"
                 grid="~ place-content-center"
-                text="xl" fw-bold
+                text="xl"
+                fw-bold
               >
                 {{ video.rank }}
               </div>
               <div
                 v-else
-                bg="$bew-elevated-solid" text-center lh-30px h-30px w-30px
-                rounded="1/2" shadow="$bew-shadow-1"
+                bg="$bew-elevated-solid"
+                text-center
+                lh-30px
+                h-30px
+                w-30px
+                rounded="1/2"
+                shadow="$bew-shadow-1"
                 border="1 $bew-border-color"
               >
                 {{ video.rank }}
@@ -375,7 +414,8 @@ provide('getVideoType', () => props.type!)
                 class="opacity-0 group-hover/cover:opacity-100"
                 transform="scale-70 group-hover/cover:scale-100"
                 duration-300
-                pos="absolute top-0 left-0" z-2
+                pos="absolute top-0 left-0"
+                z-2
                 @click.stop=""
               >
                 <slot name="coverTopLeft" />
@@ -384,8 +424,15 @@ provide('getVideoType', () => props.type!)
               <div
                 v-if="video.liveStatus === 1"
                 class="group-hover:opacity-0"
-                pos="absolute left-0 top-0" bg="$bew-theme-color" text="xs white" fw-bold
-                p="x-2 y-1" m-1 inline-block rounded="$bew-radius" duration-300
+                pos="absolute left-0 top-0"
+                bg="$bew-theme-color"
+                text="xs white"
+                fw-bold
+                p="x-2 y-1"
+                m-1
+                inline-block
+                rounded="$bew-radius"
+                duration-300
               >
                 LIVE
                 <i i-svg-spinners:pulse-3 align-middle mt--0.2em />
@@ -398,8 +445,14 @@ provide('getVideoType', () => props.type!)
                   backgroundColor: video.badge.bgColor,
                   color: video.badge.color,
                 }"
-                pos="absolute right-0 top-0" bg="$bew-theme-color" text="xs white"
-                p="x-2 y-1" m-1 inline-block rounded="$bew-radius" duration-300
+                pos="absolute right-0 top-0"
+                bg="$bew-theme-color"
+                text="xs white"
+                p="x-2 y-1"
+                m-1
+                inline-block
+                rounded="$bew-radius"
+                duration-300
               >
                 {{ video.badge.text }}
               </div>
@@ -407,8 +460,10 @@ provide('getVideoType', () => props.type!)
               <!-- Watcher later button -->
               <button
                 v-if="showWatcherLater"
-                pos="absolute top-0 right-0" z="2"
-                p="x-2 y-1" m="1"
+                pos="absolute top-0 right-0"
+                z="2"
+                p="x-2 y-1"
+                m="1"
                 rounded="$bew-radius"
                 text="!white xl"
                 bg="black opacity-60"
@@ -417,7 +472,12 @@ provide('getVideoType', () => props.type!)
                 duration-300
                 @click.prevent.stop="toggleWatchLater"
               >
-                <Tooltip v-if="!isInWatchLater" :content="$t('common.save_to_watch_later')" placement="bottom-right" type="dark">
+                <Tooltip
+                  v-if="!isInWatchLater"
+                  :content="$t('common.save_to_watch_later')"
+                  placement="bottom-right"
+                  type="dark"
+                >
                   <div i-mingcute:carplay-line />
                 </Tooltip>
                 <Tooltip v-else :content="$t('common.added')" placement="bottom-right" type="dark">
@@ -444,11 +504,7 @@ provide('getVideoType', () => props.type!)
             />
             <div class="group/desc" flex="~ col" w="full" align="items-start">
               <div flex="~ gap-1 justify-between items-start" w="full" pos="relative">
-                <h3
-                  class="keep-two-lines"
-                  text="overflow-ellipsis $bew-text-1 lg"
-                  cursor="pointer"
-                >
+                <h3 class="keep-two-lines" text="overflow-ellipsis $bew-text-1 lg" cursor="pointer">
                   <a :href="videoUrl" target="_blank" :title="video.title">
                     {{ video.title }}
                   </a>
@@ -459,8 +515,15 @@ provide('getVideoType', () => props.type!)
                   ref="moreBtnRef"
                   :class="{ 'more-active': showVideoOptions }"
                   bg="hover:$bew-fill-2 active:$bew-fill-3"
-                  shrink-0 w-32px h-32px m="t--3px r--4px"
-                  grid place-items-center cursor-pointer rounded="50%" duration-300
+                  shrink-0
+                  w-32px
+                  h-32px
+                  m="t--3px r--4px"
+                  grid
+                  place-items-center
+                  cursor-pointer
+                  rounded="50%"
+                  duration-300
                   @click.stop.prevent="handleMoreBtnClick"
                 >
                   <div i-mingcute:more-2-line text="lg" />
@@ -479,24 +542,27 @@ provide('getVideoType', () => props.type!)
                     :author="video.author"
                     :is-live="video.liveStatus === 1"
                   />
-                  <VideoCardAuthorName
-                    :author="video.author"
-                  />
+                  <VideoCardAuthorName :author="video.author" />
                 </span>
               </div>
 
               <div flex="~ items-center gap-1 wrap">
                 <!-- View & Danmaku Count -->
-                <div
-                  text="sm $bew-text-2" rounded="$bew-radius"
-                  inline-block
-                >
+                <div text="sm $bew-text-2" rounded="$bew-radius" inline-block>
                   <span v-if="video.view || video.viewStr">
-                    {{ video.view ? $t('common.view', { count: numFormatter(video.view) }, video.view) : `${numFormatter(video.viewStr || '0')}${$t('common.viewWithoutNum')}` }}
+                    {{
+                      video.view
+                        ? $t('common.view', { count: numFormatter(video.view) }, video.view)
+                        : `${numFormatter(video.viewStr || '0')}${$t('common.viewWithoutNum')}`
+                    }}
                   </span>
                   <template v-if="video.danmaku || video.danmakuStr">
                     <span text-xs font-light mx-4px>•</span>
-                    <span>{{ video.danmaku ? $t('common.danmaku', { count: numFormatter(video.danmaku) }, video.danmaku) : `${numFormatter(video.danmakuStr || '0')}${$t('common.danmakuWithoutNum')}` }}</span>
+                    <span>{{
+                      video.danmaku
+                        ? $t('common.danmaku', { count: numFormatter(video.danmaku) }, video.danmaku)
+                        : `${numFormatter(video.danmakuStr || '0')}${$t('common.danmakuWithoutNum')}`
+                    }}</span>
                   </template>
                   <br>
                 </div>
@@ -505,16 +571,28 @@ provide('getVideoType', () => props.type!)
                 <!-- Tag -->
                 <span
                   v-if="video.tag"
-                  text="$bew-theme-color" lh-6 p="x-2" rounded="$bew-radius" bg="$bew-theme-color-20"
+                  text="$bew-theme-color"
+                  lh-6
+                  p="x-2"
+                  rounded="$bew-radius"
+                  bg="$bew-theme-color-20"
                 >
                   {{ video.tag }}
                 </span>
                 <span
                   v-if="video.publishedTimestamp || video.capsuleText"
-                  bg="$bew-fill-1" p="x-2" rounded="$bew-radius" text="$bew-text-3" lh-6
+                  bg="$bew-fill-1"
+                  p="x-2"
+                  rounded="$bew-radius"
+                  text="$bew-text-3"
+                  lh-6
                   mr-1
                 >
-                  {{ video.publishedTimestamp ? calcTimeSince(video.publishedTimestamp * 1000) : video.capsuleText?.trim() }}
+                  {{
+                    video.publishedTimestamp
+                      ? calcTimeSince(video.publishedTimestamp * 1000)
+                      : video.capsuleText?.trim()
+                  }}
                 </span>
                 <!-- Video type -->
                 <span text="$bew-text-2" grid="~ place-items-center">
@@ -529,19 +607,11 @@ provide('getVideoType', () => props.type!)
     </div>
 
     <!-- skeleton -->
-    <VideoCardSkeleton
-      v-if="skeleton"
-      :horizontal="horizontal"
-      important-mb-0
-    />
+    <VideoCardSkeleton v-if="skeleton" :horizontal="horizontal" important-mb-0 />
 
     <!-- context menu -->
-    <Teleport
-      v-if="showVideoOptions && video"
-      :to="mainAppRef"
-    >
+    <Teleport v-if="showVideoOptions && video" :to="mainAppRef">
       <VideoCardContextMenu
-        ref="contextMenuRef"
         :video="{
           ...video,
           url: videoUrl,

@@ -1,4 +1,6 @@
 common:
+  load_failed: 加载失败，请重试
+  loaded_items: 已加载 {count} 项
   continue_browsing: 继续浏览下一组
   retry: 重试
   view_all: 查看更多
@@ -56,6 +58,10 @@ iframe_drawer:
   press_esc_again_to_close: 再次按下 Esc 关闭
 
 settings:
+  clear_unused_wallpapers: 清理未使用壁纸
+  group_blocking: 屏蔽
+  block_at_comments: '屏蔽含 {''@''} 的一级评论'
+  block_at_comments_desc: '只检查一级评论正文，含 {''@''} 时隐藏整条评论及其回复，不单独筛选回复。'
   title: 设置
 
   # Settings menu
@@ -424,6 +430,10 @@ video_card:
   video_removed: 视频已移除
 
 home:
+  series_plays: 播放量
+  series_episodes: 话数
+  series_air_date: 开播时间
+  series_details: 查看剧集信息
   tell_us_why: 为什么这么做...
   not_interested_desc: 你可以使用 <kbd>↑</kbd> 和 <kbd>↓</kbd> 来选择原因，或者直接使用数字键选择原因，按 <kbd>Enter</kbd> 就直接提交。
 

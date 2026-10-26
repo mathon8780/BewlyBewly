@@ -1,16 +1,35 @@
 import md5 from 'md5'
 import { storage } from 'webextension-polyfill'
 
-import type { Settings } from './storage'
+import type { Settings } from './settings'
+import { parseSettings } from './settings'
 
 const PREFIX = 'bewly-wallpaper:'
+const CREATED = 'bewly-wallpaper-time:'
 const savedImages = new Map<string, string>()
+const persistedImages = new Set<string>()
 const pendingImages = new Map<string, Promise<void>>()
+
+storage.onChanged.addListener((changes, area) => {
+  if (area === 'local') {
+    for (const [key, change] of Object.entries(changes)) {
+      if (key.startsWith(PREFIX) && change.newValue === undefined) {
+        savedImages.delete(key)
+        persistedImages.delete(key)
+      }
+    }
+  }
+})
 
 function rememberImage(key: string, url: string) {
   savedImages.set(key, url)
-  if (savedImages.size > 8)
-    savedImages.delete(savedImages.keys().next().value!)
+  let bytes = [...savedImages.values()].reduce((sum, value) => sum + value.length, 0)
+  for (const [oldKey, value] of savedImages) {
+    if (bytes <= 4 * 1024 * 1024)
+      break
+    savedImages.delete(oldKey)
+    bytes -= value.length
+  }
 }
 
 async function storeImage(url: string): Promise<string> {
@@ -21,14 +40,15 @@ async function storeImage(url: string): Promise<string> {
       return key
   }
   const key = `${PREFIX}${md5(url)}`
-  if (!savedImages.has(key)) {
+  if (!persistedImages.has(key)) {
     let pending = pendingImages.get(key)
     if (!pending) {
-      pending = storage.local.set({ [key]: url })
+      pending = storage.local.set({ [key]: url, [CREATED + key]: Date.now() })
       pendingImages.set(key, pending)
     }
     try {
       await pending
+      persistedImages.add(key)
       rememberImage(key, url)
     }
     finally {
@@ -44,6 +64,7 @@ async function loadImage(url: string): Promise<string> {
   const image = savedImages.get(url) ?? (await storage.local.get(url))[url]
   if (typeof image !== 'string')
     return ''
+  persistedImages.add(url)
   rememberImage(url, image)
   return image
 }
@@ -52,10 +73,40 @@ export async function persistWallpaper(dataUrl: string): Promise<void> {
   await storeImage(dataUrl)
 }
 
+export async function wallpaperBytes(): Promise<number> {
+  const items = await storage.local.get(null)
+  return Object.entries(items).reduce(
+    (sum, [key, value]) => sum + (key.startsWith(PREFIX) ? key.length + String(value).length : 0),
+    0,
+  )
+}
+
+/** 显式清理以已保存的设置引用为准。 */
+export async function cleanupWallpapers(): Promise<void> {
+  const items = await storage.local.get(null)
+  const settings = JSON.parse((items.settings as string) || '{}')
+  const used = new Set([
+    settings.wallpaper,
+    settings.searchPageWallpaper,
+    settings.locallyUploadedWallpaper?.url,
+    settings.locallyUploadedWallpaper?.thumbnail,
+  ])
+  const unused = Object.keys(items).filter(
+    key => key.startsWith(PREFIX) && !used.has(key) && Number(items[CREATED + key] || 0) < Date.now() - 60000,
+  )
+  await storage.local.remove(unused.flatMap(key => [key, CREATED + key]))
+  savedImages.clear()
+  persistedImages.clear()
+}
+
 export function needsWallpaperMigration(raw: string): boolean {
   const value = JSON.parse(raw)
-  return [value.wallpaper, value.searchPageWallpaper, value.locallyUploadedWallpaper?.url, value.locallyUploadedWallpaper?.thumbnail]
-    .some(url => typeof url === 'string' && url.startsWith('data:image/'))
+  return [
+    value.wallpaper,
+    value.searchPageWallpaper,
+    value.locallyUploadedWallpaper?.url,
+    value.locallyUploadedWallpaper?.thumbnail,
+  ].some(url => typeof url === 'string' && url.startsWith('data:image/'))
 }
 
 /**
@@ -66,7 +117,7 @@ export function needsWallpaperMigration(raw: string): boolean {
  */
 export const wallpaperSettingsSerializer = {
   async read(raw: string): Promise<Settings> {
-    const value = JSON.parse(raw)
+    const value = parseSettings(JSON.parse(raw))
     for (const field of ['wallpaper', 'searchPageWallpaper'] as const) {
       if (typeof value[field] === 'string')
         value[field] = await loadImage(value[field])
@@ -79,7 +130,10 @@ export const wallpaperSettingsSerializer = {
     return value
   },
   async write(value: Settings): Promise<string> {
-    const result = { ...value, locallyUploadedWallpaper: value.locallyUploadedWallpaper ? { ...value.locallyUploadedWallpaper } : null }
+    const result = {
+      ...value,
+      locallyUploadedWallpaper: value.locallyUploadedWallpaper ? { ...value.locallyUploadedWallpaper } : null,
+    }
     const [wallpaper, searchPageWallpaper, local, thumbnail] = await Promise.all([
       storeImage(result.wallpaper),
       storeImage(result.searchPageWallpaper),

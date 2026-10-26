@@ -24,6 +24,8 @@ export default antfu(
       ],
       'no-alert': 'off',
       'style/quote-props': 'off',
+      'ts/no-unsafe-function-type': 'off',
+      'vue/custom-event-name-casing': 'off',
     },
   },
   { ignores: ['**/.planning/**', '**/.pnpm-store/**', 'dist/**', 'public/**', 'extension/**', 'extension-firefox/**', 'extension-safari/**'] },
@@ -34,6 +36,8 @@ export default antfu(
     rules: {
       'import/order': 'off',
       'sort-imports': 'off',
+      'perfectionist/sort-imports': 'off',
+      'perfectionist/sort-named-imports': 'off',
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error',
     },

@@ -2,40 +2,37 @@
 import VirtualFeed from '~/components/VirtualFeed.vue'
 import { useWindowedFeed } from '~/composables/useWindowedFeed'
 import type { GridLayoutType } from '~/logic'
-import type { DataItem as MomentItem, MomentResult } from '~/models/moment/moment'
 import api from '~/utils/api'
+import { getUserID } from '~/utils/main'
+import { createSubscribedSeriesLoader } from '~/utils/subscribedSeries'
 
-interface VideoElement { uniqueId: string, item: MomentItem }
+import SubscribedSeriesCard from './SubscribedSeriesCard.vue'
+
 const props = defineProps<{ gridLayout: GridLayoutType }>()
 const emit = defineEmits<{ (e: 'beforeLoading'): void, (e: 'afterLoading'): void }>()
-let offset = ''
-let updateBaseline = ''
-const { items: videoList, isLoading, noMoreContent, needToLoginFirst, windowFull, loadFailed, load: getData, reset: initData, continueWindow } = useWindowedFeed<VideoElement>({
+const loadedCount = ref(0)
+const loader = createSubscribedSeriesLoader(
+  api.anime.getAnimeWatchList,
+  getUserID,
+  count => (loadedCount.value = count),
+)
+const {
+  items: videoList,
+  isLoading,
+  noMoreContent,
+  needToLoginFirst,
+  windowFull,
+  loadFailed,
+  load: getData,
+  reset: initData,
+  continueWindow,
+} = useWindowedFeed({
   key: video => video.uniqueId,
   minPages: 3,
-  resetCursor: () => {
-    offset = ''
-    updateBaseline = ''
-  },
+  resetCursor: loader.reset,
   beforeLoading: () => emit('beforeLoading'),
   afterLoading: () => emit('afterLoading'),
-  loadPage: async (current) => {
-    const response: MomentResult = await api.moment.getMoments({ type: 'pgc', offset, update_baseline: updateBaseline })
-    if (!current())
-      return { items: [], done: true }
-    if (response.code === -101)
-      return { items: [], done: true, unauthorized: true }
-    if (response.code !== 0)
-      throw new Error(response.message)
-    const previousOffset = offset
-    offset = response.data.offset
-    updateBaseline = response.data.update_baseline
-    const items = response.data.items
-    return {
-      items: items.map(item => ({ uniqueId: item.id_str, item })),
-      done: !response.data.has_more || offset === '0' || offset === previousOffset || !items.length,
-    }
-  },
+  loadPage: loader.load,
 })
 function jumpToLoginPage() {
   location.href = 'https://passport.bilibili.com/login'
@@ -50,41 +47,43 @@ defineExpose({ initData })
         {{ $t('common.login') }}
       </Button>
     </Empty>
-    <Empty v-if="videoList.length === 0 && !needToLoginFirst && !isLoading && !loadFailed" mt-6 :description="$t('common.no_more_content')">
+    <Empty
+      v-else-if="videoList.length === 0 && !isLoading && !loadFailed"
+      mt-6
+      :description="$t('common.no_more_content')"
+    >
       <Button type="primary" @click="initData()">
         {{ $t('common.operation.refresh') }}
       </Button>
     </Empty>
-    <VirtualFeed v-else :items="videoList" :item-key="video => video.uniqueId" :layout="props.gridLayout">
+    <VirtualFeed
+      v-else
+      :items="videoList"
+      :item-key="(video) => video.uniqueId"
+      :layout="props.gridLayout"
+      :max-columns="4"
+    >
       <template #default="{ item: video, index }">
-        <VideoCard
+        <SubscribedSeriesCard
           :cover-loading="index < 10 ? 'eager' : 'lazy'"
-          :skeleton="!video.item"
-          type="bangumi"
-          :video="video.item ? {
-            id: video.item.modules.module_author.mid,
-            title: `${video.item.modules.module_dynamic.major.pgc?.title}`,
-            cover: `${video.item.modules.module_dynamic.major.pgc?.cover}`,
-            author: {
-              name: video.item.modules.module_author.name,
-              authorUrl: video.item.modules.module_author.jump_url,
-              authorFace: video.item.modules.module_author.face,
-              mid: video.item.modules.module_author.mid,
-            },
-            viewStr: video.item.modules.module_dynamic.major.pgc?.stat.play,
-            danmakuStr: video.item.modules.module_dynamic.major.pgc?.stat.danmaku,
-            capsuleText: video.item.modules.module_author.pub_time,
-            epid: video.item.modules.module_dynamic.major.pgc?.epid,
-          } : undefined"
-          :show-watcher-later="false"
-          :horizontal="gridLayout !== 'adaptive'"
+          :video="video.video"
+          :air-date="video.airDate"
+          :total-episodes="video.totalEpisodes"
+          :released-episodes="video.releasedEpisodes"
         />
       </template>
     </VirtualFeed>
 
     <!-- no more content -->
-    <Empty v-if="noMoreContent && !windowFull && !needToLoginFirst" class="pb-4" :description="$t('common.no_more_content')" />
+    <Empty
+      v-if="videoList.length && noMoreContent && !windowFull && !needToLoginFirst"
+      class="pb-4"
+      :description="$t('common.no_more_content')"
+    />
     <Loading v-if="isLoading" />
+    <p v-if="isLoading" text-center>
+      {{ $t('common.loaded_items', { count: loadedCount }) }}
+    </p>
     <Button v-if="windowFull" class="my-4" @click="continueWindow">
       {{ $t('common.continue_browsing') }}
     </Button>

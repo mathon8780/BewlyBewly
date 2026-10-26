@@ -1,29 +1,66 @@
-/** Keep this function self-contained: the content bootstrap embeds its source. */
+export function getPageType(href: string) {
+  const { hostname: host, pathname: path, protocol } = new URL(href)
+  if (!/^https?:$/.test(protocol))
+    return ''
+  if (host === 'www.bilibili.com' || host === 'bilibili.com') {
+    if (path === '/' || path === '/index.html')
+      return 'homePage'
+    if (/^\/(?:video|list)\b/.test(path))
+      return 'videoPage'
+    if (/^\/bangumi\/play\b/.test(path))
+      return 'animePlayback&MoviePage'
+    if (/^\/(?:account\/)?history\b/.test(path))
+      return 'historyPage'
+    if (/^\/watchlater\b/.test(path))
+      return 'watchLaterPage'
+    if (/^\/opus\b/.test(path))
+      return 'momentsPage'
+    if (/^\/v\/topic\/detail\b/.test(path))
+      return 'topicPage'
+    if (/^\/(?:v|tv|movie|variety|mooc|documentary)\b/.test(path))
+      return 'channelPage'
+    if (/^\/(?:anime|guochuang)\b/.test(path))
+      return 'animePage'
+    if (/^\/read\b/.test(path))
+      return 'articlesPage'
+    if (/^\/404\b/.test(path))
+      return 'error404Page'
+  }
+  if (host === 'search.bilibili.com')
+    return 'searchPage'
+  if (host === 'message.bilibili.com')
+    return 'notificationsPage'
+  if (host === 'space.bilibili.com')
+    return /\/v\/note-list/.test(path) ? 'notePage' : 'userSpacePage'
+  if (host === 't.bilibili.com' && !/^\/(?:vote|share)\b/.test(path))
+    return 'momentsPage'
+  if (host === 'member.bilibili.com' && /^\/platform\b/.test(path))
+    return 'creativeCenterPage'
+  if (host === 'account.bilibili.com')
+    return /^\/big/.test(path) ? 'premiumPage' : 'accountSettingsPage'
+  if (host === 'passport.bilibili.com' && /^\/login\b/.test(path))
+    return 'loginPage'
+  if (host === 'music.bilibili.com' && /^\/pc\/music-center\b/.test(path))
+    return 'musicPage'
+  return ''
+}
+
 export function supportsContentScript(href: string, inIframe: boolean): boolean {
-  const url = new URL(href)
-  const { hostname, pathname } = url
-  if (!/^https?:$/.test(url.protocol))
-    return false
-
-  if (inIframe) {
-    return (hostname === 'www.bilibili.com' && (
-      pathname === '/' || pathname === '/index.html' || /^\/(?:video|bangumi\/play|anime|history|account\/history|watchlater|list)\b/.test(pathname)
-    )) || (hostname === 'search.bilibili.com' && /^\/all\b/.test(pathname))
-    || (hostname === 'space.bilibili.com' && /^\/\d+\/favlist\b/.test(pathname))
-    || (hostname === 't.bilibili.com' && !/^\/(?:vote|share)\b/.test(pathname))
-    || hostname === 'message.bilibili.com'
-  }
-
-  if (hostname === 'www.bilibili.com') {
-    return pathname === '/' || pathname === '/index.html' || /^\/(?:video|bangumi\/play|list|v|opus|history|account\/history|watchlater|anime|guochuang|tv|movie|variety|mooc|documentary|read|404)\b/.test(pathname)
-  }
-  if (['search.bilibili.com', 'space.bilibili.com', 'message.bilibili.com', 'account.bilibili.com'].includes(hostname))
-    return true
-  if (hostname === 't.bilibili.com')
-    return !/^\/(?:vote|share)\b/.test(pathname)
-  if (hostname === 'member.bilibili.com')
-    return /^\/platform\b/.test(pathname)
-  if (hostname === 'passport.bilibili.com')
-    return /^\/login\b/.test(pathname)
-  return hostname === 'music.bilibili.com' && /^\/pc\/music-center\b/.test(pathname)
+  const page = getPageType(href)
+  if (!inIframe)
+    return !!page
+  if (page === 'searchPage')
+    return new URL(href).pathname.startsWith('/all')
+  if (page === 'userSpacePage')
+    return /^\/\d+\/favlist\b/.test(new URL(href).pathname)
+  return [
+    'homePage',
+    'videoPage',
+    'animePlayback&MoviePage',
+    'animePage',
+    'historyPage',
+    'watchLaterPage',
+    'momentsPage',
+    'notificationsPage',
+  ].includes(page)
 }

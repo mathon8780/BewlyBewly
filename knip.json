@@ -1,22 +1,20 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/contentScripts/index.ts",
-    "src/contentScripts/runtime.ts",
-    "src/background/index.ts",
     "src/options/main.ts",
     "src/popup/main.ts",
-    "src/components/**",
     "scripts/*.ts",
     "*.config.*"
   ],
-  "ignore": [".planning/**", "src/components/Settings/**", "src/inject/**"],
+  "ignore": [
+    "src/inject/**",
+    "src/components/Settings/BIlibiliSettings/**"
+  ],
   "ignoreDependencies": [
     "@iconify/json",
-    "uno.css",
-    "lint-staged"
+    "uno.css"
   ],
-  "ignoreBinaries": ["gh", "xcrun"],
   "rules": {
     "types": "off",
     "enumMembers": "off",

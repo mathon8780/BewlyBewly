@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useBewlyApp } from '~/composables/useAppProvider'
+import { useAsyncTask } from '~/composables/useAsyncTask'
 import type { List as PopularAnimeItem, PopularAnimeResult } from '~/models/anime/popular'
 import type { ItemSubItem as RecommendationItem, RecommendationResult } from '~/models/anime/recommendation'
 import type { List as WatchListItem, WatchListResult } from '~/models/anime/watchList'
@@ -15,7 +16,7 @@ const popularAnimeList = reactive<PopularAnimeItem[]>([])
 const cursor = ref<number>(0)
 const isLoadingAnimeWatchList = ref<boolean>()
 const isLoadingPopularAnime = ref<boolean>()
-const isLoadingRecommendAnime = ref<boolean>()
+const { isLoading: isLoadingRecommendAnime, loadFailed, run } = useAsyncTask()
 const activatedSeasonId = ref<number>()
 const noMoreContent = ref<boolean>()
 const animeTimeTableRef = ref()
@@ -61,65 +62,47 @@ function initPageAction() {
 
 function getAnimeWatchList() {
   isLoadingAnimeWatchList.value = true
-  api.anime.getAnimeWatchList({
-    vmid: getUserID() ?? 0,
-    pn: 1,
-    follow_status: 2,
-    ps: 30,
-  })
-    .then((response: WatchListResult) => {
-      const {
-        code,
-        data: { list },
-      } = response
-      if (code === 0)
-        Object.assign(animeWatchList, list as WatchListItem[])
+  api.anime
+    .getAnimeWatchList({
+      vmid: getUserID() ?? 0,
+      pn: 1,
+      follow_status: 2,
+      ps: 30,
     })
-    .catch(() => Object.assign(animeWatchList, []))
+    .then((response: WatchListResult) => {
+      if (response.code === 0)
+        animeWatchList.splice(0, animeWatchList.length, ...response.data.list)
+    })
+    .catch(console.error)
     .finally(() => {
       isLoadingAnimeWatchList.value = false
     })
 }
 
 function getRecommendAnimeList() {
-  isLoadingRecommendAnime.value = true
-  api.anime.getRecommendAnimeList({
-    coursor: cursor.value,
-  })
-    .then((response: RecommendationResult) => {
-      const {
-        code,
-        data: { items, coursor, has_next },
-      } = response
-      if (code === 0 && has_next) {
-        if (recommendAnimeList.length === 0)
-          Object.assign(recommendAnimeList, items[0].sub_items as RecommendationItem[])
-        else
-          recommendAnimeList.push(...items[0].sub_items)
-
-        cursor.value = coursor
-      }
-      if (code === 0 && !has_next)
-        noMoreContent.value = true
-    })
-    .finally(() => {
-      isLoadingRecommendAnime.value = false
-    })
+  return run(
+    () => api.anime.getRecommendAnimeList({ coursor: cursor.value }),
+    (response: RecommendationResult) => {
+      if (response.code !== 0)
+        throw new Error(response.message)
+      const { items, coursor, has_next } = response.data
+      recommendAnimeList.push(...items.flatMap(item => item.sub_items))
+      cursor.value = coursor
+      noMoreContent.value = !has_next
+    },
+  )
 }
 
 function getPopularAnimeList() {
   isLoadingPopularAnime.value = true
-  api.anime.getPopularAnimeList()
+  api.anime
+    .getPopularAnimeList()
     .then((response: PopularAnimeResult) => {
-      const {
-        code,
-        result: { list },
-      } = response
-      if (code === 0)
-        Object.assign(popularAnimeList, list as PopularAnimeItem[])
+      if (response.code === 0)
+        popularAnimeList.splice(0, popularAnimeList.length, ...response.result.list)
     })
-    .catch(() => {})
-    .finally(() => isLoadingPopularAnime.value = false)
+    .catch(console.error)
+    .finally(() => (isLoadingPopularAnime.value = false))
 }
 </script>
 
@@ -134,9 +117,7 @@ function getPopularAnimeList() {
           </h3>
           <Button
             size="large"
-            style="
-              --b-button-shadow: var(--bew-shadow-1);
-            "
+            style="--b-button-shadow: var(--bew-shadow-1)"
             @click="openLinkToNewTab(`https://space.bilibili.com/${getUserID() ?? 0}/bangumi`)"
           >
             {{ $t('common.view_all') }}
@@ -147,11 +128,13 @@ function getPopularAnimeList() {
           <div w-full flex>
             <BangumiCardSkeleton
               v-for="item in 6"
-              v-show="isLoadingAnimeWatchList" :key="item"
+              v-show="isLoadingAnimeWatchList"
+              :key="item"
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              mr-6 important-mb-0
+              mr-6
+              important-mb-0
               last:pr-6
             />
             <BangumiCard
@@ -179,7 +162,8 @@ function getPopularAnimeList() {
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              mr-6 important-mb-0
+              mr-6
+              important-mb-0
               last:pr-6
             />
           </div>
@@ -194,9 +178,7 @@ function getPopularAnimeList() {
           </h3>
           <Button
             size="large"
-            style="
-              --b-button-shadow: var(--bew-shadow-1);
-            "
+            style="--b-button-shadow: var(--bew-shadow-1)"
             @click="openLinkToNewTab(`https://www.bilibili.com/v/popular/rank/bangumi`)"
           >
             {{ $t('common.view_all') }}
@@ -207,11 +189,13 @@ function getPopularAnimeList() {
           <div w-full flex>
             <BangumiCardSkeleton
               v-for="item in 6"
-              v-show="isLoadingPopularAnime" :key="item"
+              v-show="isLoadingPopularAnime"
+              :key="item"
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              mr-6 important-mb-0
+              mr-6
+              important-mb-0
               last:pr-6
             />
             <BangumiCard
@@ -220,7 +204,8 @@ function getPopularAnimeList() {
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              mr-6 important-mb-0
+              mr-6
+              important-mb-0
               last:pr-6
               :bangumi="{
                 url: item.url,
@@ -274,12 +259,7 @@ function getPopularAnimeList() {
             @mouseleave="activatedSeasonId = 0"
           />
 
-          <BangumiCardSkeleton
-            v-for="item in 30"
-            v-show="isLoadingRecommendAnime"
-            :key="item"
-            important-mb-0
-          />
+          <BangumiCardSkeleton v-for="item in 30" v-show="isLoadingRecommendAnime" :key="item" important-mb-0 />
         </div>
       </section>
     </div>
@@ -288,6 +268,9 @@ function getPopularAnimeList() {
     <Empty v-if="noMoreContent" class="pb-4" :description="$t('common.no_more_content')" />
 
     <!-- loading -->
+    <Button v-if="loadFailed" @click="getRecommendAnimeList">
+      {{ $t('common.retry') }}
+    </Button>
     <Loading v-if="isLoadingRecommendAnime && recommendAnimeList.length !== 0" m="-t-4" />
   </div>
 </template>

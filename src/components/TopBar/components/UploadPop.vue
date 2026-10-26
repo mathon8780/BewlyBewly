@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -36,7 +36,7 @@ const list = computed(() => {
 
 <template>
   <div
-    style="backdrop-filter: var(--bew-filter-glass-1);"
+    style="backdrop-filter: var(--bew-filter-glass-1)"
     bg="$bew-elevated"
     rounded="$bew-radius"
     p="4"
@@ -65,6 +65,4 @@ const list = computed(() => {
   </div>
 </template>
 
-<style lang="scss" scoped>
-
-</style>
+<style lang="scss" scoped></style>

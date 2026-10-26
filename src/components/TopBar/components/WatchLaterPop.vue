@@ -2,13 +2,14 @@
 import Empty from '~/components/Empty.vue'
 import Loading from '~/components/Loading.vue'
 import Progress from '~/components/Progress.vue'
+import { useAsyncTask } from '~/composables/useAsyncTask'
 import type { List as VideoItem, WatchLaterResult } from '~/models/video/watchLater'
 import api from '~/utils/api'
 import { calcCurrentTime } from '~/utils/dataFormatter'
 import { getCSRF, removeHttpFromUrl } from '~/utils/main'
 
 const watchLaterList = reactive<VideoItem[]>([])
-const isLoading = ref<boolean>()
+const { isLoading, loadFailed, run } = useAsyncTask()
 const viewAllUrl = computed((): string => {
   return 'https://www.bilibili.com/watchlater/list'
 })
@@ -33,23 +34,22 @@ function getWatchLaterUrl(bvid: string): string {
  * Get watch later list
  */
 function getAllWatchLaterList() {
-  isLoading.value = true
-  watchLaterList.length = 0
-
-  api.watchlater.getAllWatchLaterList()
-    .then((res: WatchLaterResult) => {
-      if (res.code === 0)
-        Object.assign(watchLaterList, res.data.list)
-
-      isLoading.value = false
-    })
+  return run(
+    () => api.watchlater.getAllWatchLaterList(),
+    (res: WatchLaterResult) => {
+      if (res.code !== 0)
+        throw new Error(res.message)
+      watchLaterList.splice(0, watchLaterList.length, ...res.data.list)
+    },
+  )
 }
 
 function deleteWatchLaterItem(index: number, aid: number) {
-  api.watchlater.removeFromWatchLater({
-    aid,
-    csrf: getCSRF(),
-  })
+  api.watchlater
+    .removeFromWatchLater({
+      aid,
+      csrf: getCSRF(),
+    })
     .then((res) => {
       if (res.code === 0) {
         watchLaterList.splice(index, 1)
@@ -60,8 +60,10 @@ function deleteWatchLaterItem(index: number, aid: number) {
 
 <template>
   <div
-    style="backdrop-filter: var(--bew-filter-glass-1);"
-    h="[calc(100vh-100px)]" max-h-500px important-overflow-y-overlay
+    style="backdrop-filter: var(--bew-filter-glass-1)"
+    h="[calc(100vh-100px)]"
+    max-h-500px
+    important-overflow-y-overlay
     bg="$bew-elevated"
     w="380px"
     rounded="$bew-radius"
@@ -72,7 +74,7 @@ function deleteWatchLaterItem(index: number, aid: number) {
   >
     <!-- top bar -->
     <header
-      style="backdrop-filter: var(--bew-filter-glass-1);"
+      style="backdrop-filter: var(--bew-filter-glass-1)"
       flex="~"
       justify="between"
       p="y-4 x-6"
@@ -88,42 +90,31 @@ function deleteWatchLaterItem(index: number, aid: number) {
       </div>
 
       <div flex="~ gap-4">
-        <ALink
-          :href="playAllUrl"
-          type="topBar"
-          flex="~" items="center"
-        >
+        <ALink :href="playAllUrl" type="topBar" flex="~" items="center">
           <span text="sm">{{ $t('common.play_all') }}</span>
         </ALink>
-        <ALink
-          :href="viewAllUrl"
-          type="topBar"
-          flex="~" items="center"
-        >
+        <ALink :href="viewAllUrl" type="topBar" flex="~" items="center">
           <span text="sm">{{ $t('common.view_all') }}</span>
         </ALink>
       </div>
     </header>
 
     <!-- watchLater wrapper -->
-    <main
-      overflow-hidden rounded="$bew-radius"
-      flex="~ col gap-2"
-      p="x-4"
-    >
+    <main overflow-hidden rounded="$bew-radius" flex="~ col gap-2" p="x-4">
       <!-- loading -->
-      <Loading
-        v-if="isLoading && watchLaterList.length === 0"
-        h="full"
-        flex="~ items-center"
-      />
+      <Button v-if="loadFailed" @click="getAllWatchLaterList">
+        {{ $t('common.retry') }}
+      </Button>
+      <Loading v-if="isLoading && watchLaterList.length === 0" h="full" flex="~ items-center" />
 
       <!-- empty -->
       <Empty
         v-if="!isLoading && watchLaterList.length === 0"
         pos="absolute top-0 left-0"
         bg="$bew-content"
-        z="0" w="full" h="full"
+        z="0"
+        w="full"
+        h="full"
         flex="~ items-center"
         rounded="$bew-radius"
       />
@@ -136,7 +127,8 @@ function deleteWatchLaterItem(index: number, aid: number) {
           :href="getWatchLaterUrl(item.bvid)"
           class="group"
           type="topBar"
-          m="last:b-4" p="2"
+          m="last:b-4"
+          p="2"
           rounded="$bew-radius"
           hover:bg="$bew-fill-2"
           duration-300
@@ -154,7 +146,10 @@ function deleteWatchLaterItem(index: number, aid: number) {
               <!-- Delete button -->
               <div
                 class="group-hover:opacity-100 opacity-0"
-                pos="absolute top-0 right-0" z-1 w-24px h-24px
+                pos="absolute top-0 right-0"
+                z-1
+                w-24px
+                h-24px
                 bg="black opacity-60 hover:$bew-error-color"
                 grid="~ place-items-center"
                 m="1"
@@ -169,11 +164,10 @@ function deleteWatchLaterItem(index: number, aid: number) {
               <!-- Video -->
               <div pos="relative">
                 <img
-                  w="150px" h-full
+                  w="150px"
+                  h-full
                   class="aspect-video"
-                  :src="`${removeHttpFromUrl(
-                    item.pic,
-                  )}@256w_144h_1c`"
+                  :src="`${removeHttpFromUrl(item.pic)}@256w_144h_1c`"
                   :alt="item.title"
                   object-cover
                 >
@@ -187,30 +181,17 @@ function deleteWatchLaterItem(index: number, aid: number) {
                 >
                   <!--  When progress = -1 means that the user watched the full video -->
                   {{
-                    `${
-                      item.progress === -1
-                        ? calcCurrentTime(item.duration)
-                        : calcCurrentTime(item.progress)
-                    } /
+                    `${item.progress === -1 ? calcCurrentTime(item.duration) : calcCurrentTime(item.progress)} /
                     ${calcCurrentTime(item.duration)}`
                   }}
                 </div>
               </div>
-              <Progress
-                :percentage="
-                  (item.progress / item.duration) * 100
-                "
-              />
+              <Progress :percentage="(item.progress / item.duration) * 100" />
             </div>
 
             <!-- Description -->
             <div>
-              <h3
-                class="keep-two-lines"
-                overflow="hidden"
-                text="ellipsis"
-                break-anywhere
-              >
+              <h3 class="keep-two-lines" overflow="hidden" text="ellipsis" break-anywhere>
                 {{ item.title }}
               </h3>
               <div text="$bew-text-2 sm" m="t-4" flex="~" align="items-center">

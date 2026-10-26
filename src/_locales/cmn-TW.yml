@@ -1,4 +1,6 @@
 common:
+  load_failed: 載入失敗，請重試
+  loaded_items: 已載入 {count} 項
   continue_browsing: 繼續瀏覽下一組
   retry: 重試
   view_all: 檢視所有
@@ -56,6 +58,10 @@ iframe_drawer:
   press_esc_again_to_close: 再次按下 Esc 關閉
 
 settings:
+  clear_unused_wallpapers: 清理未使用桌布
+  group_blocking: 封鎖
+  block_at_comments: '隱藏含 {''@''} 的一級留言'
+  block_at_comments_desc: '只檢查一級留言內文，含 {''@''} 時隱藏整條留言及其回覆，不單獨篩選回覆。'
   title: 設定
 
   # Settings menu
@@ -425,6 +431,10 @@ video_card:
   video_removed: 影片已移除
 
 home:
+  series_plays: 播放量
+  series_episodes: 話數
+  series_air_date: 開播時間
+  series_details: 查看劇集資訊
   tell_us_why: 爲什麼這樣做...
   not_interested_desc: 你可以用 <kbd>↑</kbd> 和 <kbd>↓</kbd> 來選擇原因，或者直接使用數字鍵來選擇原因，按 <kbd>Enter</kbd> 就直接提交。
 

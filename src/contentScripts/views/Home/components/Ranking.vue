@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 
 import { useBewlyApp } from '~/composables/useAppProvider'
+import { useAsyncTask } from '~/composables/useAsyncTask'
 import type { GridLayoutType } from '~/logic'
 import { settings } from '~/logic'
 import type { List as RankingVideoItem, RankingResult } from '~/models/video/ranking'
@@ -28,8 +29,7 @@ const gridClass = computed((): string => {
     // eslint-disable-next-line ts/no-use-before-define
     if (!activatedRankingType.value.seasonType)
       return 'grid-adaptive-video'
-    else
-      return 'grid-adaptive-bangumi'
+    else return 'grid-adaptive-bangumi'
   }
 
   if (props.gridLayout === 'twoColumns')
@@ -67,32 +67,36 @@ const rankingTypes = computed((): RankingType[] => {
   ]
 })
 
-const isLoading = ref<boolean>(false)
+const { isLoading, loadFailed, run } = useAsyncTask()
 const activatedRankingType = ref<RankingType>({ ...rankingTypes.value[0] })
 const videoList = reactive<RankingVideoItem[]>([])
 const PgcList = reactive<RankingPgcItem[]>([])
 const shouldMoveAsideUp = ref<boolean>(false)
 
-watch(() => activatedRankingType.value.id, () => {
-  handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+watch(
+  () => activatedRankingType.value.id,
+  () => {
+    handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
 
-  initData()
-})
+    initData()
+  },
+)
 
-watch(() => props.topBarVisibility, () => {
-  shouldMoveAsideUp.value = false
+watch(
+  () => props.topBarVisibility,
+  () => {
+    shouldMoveAsideUp.value = false
 
-  // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
-  // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
-  // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
-  if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-    if (props.topBarVisibility)
-      shouldMoveAsideUp.value = false
-
-    else
-      shouldMoveAsideUp.value = true
-  }
-})
+    // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
+    // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
+    // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
+    if (settings.value.autoHideTopBar && settings.value.showTopBar) {
+      if (props.topBarVisibility)
+        shouldMoveAsideUp.value = false
+      else shouldMoveAsideUp.value = true
+    }
+  },
+)
 
 onMounted(() => {
   initData()
@@ -120,50 +124,54 @@ function initData() {
 function getData() {
   if ('seasonType' in activatedRankingType.value)
     getRankingPgc()
-  else
-    getRankingVideos()
+  else getRankingVideos()
 }
 
 // onBeforeUnmount(() => {
 //   emitter.off(TOP_BAR_VISIBILITY_CHANGE)
 // })
 
+watch(isLoading, (loading) => {
+  if (loading)
+    emit('beforeLoading')
+  else emit('afterLoading')
+})
+
 function getRankingVideos() {
-  videoList.length = 0
-  emit('beforeLoading')
-  isLoading.value = true
-  api.ranking.getRankingVideos({
-    rid: activatedRankingType.value.rid,
-    type: 'type' in activatedRankingType.value ? activatedRankingType.value.type : 'all',
-  }).then((response: RankingResult) => {
-    if (response.code === 0) {
-      const { list } = response.data
-      Object.assign(videoList, list)
-    }
-  }).finally(() => {
-    isLoading.value = false
-    emit('afterLoading')
-  })
+  return run(
+    () =>
+      api.ranking.getRankingVideos({
+        rid: activatedRankingType.value.rid,
+        type: activatedRankingType.value.type || 'all',
+      }),
+    (response: RankingResult) => {
+      if (response.code !== 0)
+        throw new Error(response.message)
+      videoList.splice(0, videoList.length, ...response.data.list)
+    },
+  )
 }
 
 function getRankingPgc() {
-  PgcList.length = 0
-  isLoading.value = true
-  api.ranking.getRankingPgc({
-    season_type: activatedRankingType.value.seasonType,
-  }).then((response: RankingPgcResult) => {
-    if (response.code === 0)
-      Object.assign(PgcList, response.data.list)
-  }).finally(() => isLoading.value = false)
+  return run(
+    () => api.ranking.getRankingPgc({ season_type: activatedRankingType.value.seasonType }),
+    (response: RankingPgcResult) => {
+      if (response.code !== 0)
+        throw new Error(response.message)
+      PgcList.splice(0, PgcList.length, ...response.data.list)
+    },
+  )
 }
-
-defineExpose({ initData })
 </script>
 
 <template>
   <div flex="~ gap-40px">
     <aside
-      pos="sticky top-150px" h="[calc(100vh-140px)]" w-200px shrink-0 duration-300
+      pos="sticky top-150px"
+      h="[calc(100vh-140px)]"
+      w-200px
+      shrink-0
+      duration-300
       ease-in-out
       :class="{ hide: shouldMoveAsideUp }"
     >
@@ -172,9 +180,17 @@ defineExpose({ initData })
           <li v-for="rankingType in rankingTypes" :key="rankingType.id">
             <a
               :class="{ active: activatedRankingType.id === rankingType.id }"
-              px-4 lh-30px h-30px hover:bg="$bew-fill-2" w-inherit
-              block rounded="$bew-radius" cursor-pointer transition="all 300 ease-out"
-              hover:scale-105 un-text="$bew-text-1"
+              px-4
+              lh-30px
+              h-30px
+              hover:bg="$bew-fill-2"
+              w-inherit
+              block
+              rounded="$bew-radius"
+              cursor-pointer
+              transition="all 300 ease-out"
+              hover:scale-105
+              un-text="$bew-text-1"
               @click="activatedRankingType = rankingType"
             >{{ rankingType.name }}</a>
           </li>
@@ -233,19 +249,16 @@ defineExpose({ initData })
         />
       </template>
 
+      <Button v-if="loadFailed" @click="getData">
+        {{ $t('common.retry') }}
+      </Button>
       <!-- skeleton -->
       <template v-if="isLoading">
         <template v-if="!('seasonType' in activatedRankingType)">
-          <VideoCardSkeleton
-            v-for="item in 30" :key="item"
-            :horizontal="gridLayout !== 'adaptive'"
-          />
+          <VideoCardSkeleton v-for="item in 30" :key="item" :horizontal="gridLayout !== 'adaptive'" />
         </template>
         <template v-else>
-          <BangumiCardSkeleton
-            v-for="item in 30" :key="item"
-            :horizontal="gridLayout !== 'adaptive'"
-          />
+          <BangumiCardSkeleton v-for="item in 30" :key="item" :horizontal="gridLayout !== 'adaptive'" />
         </template>
       </template>
     </main>

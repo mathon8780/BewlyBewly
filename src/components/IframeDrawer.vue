@@ -127,35 +127,41 @@ const escPressedTimer = ref<NodeJS.Timeout | null>(null)
 const disableEscPress = ref<boolean>(false)
 
 nextTick(() => {
-  onKeyStroke('Escape', (e: KeyboardEvent) => {
-    e.preventDefault()
-    if (settings.value.closeDrawerWithoutPressingEscAgain) {
-      clearTimeout(escPressedTimer.value!)
-      handleClose()
-      return
-    }
-    if (disableEscPress.value)
-      return
-    if (isEscPressed.value) {
-      handleClose()
-    }
-    else {
-      isEscPressed.value = true
-      if (escPressedTimer.value) {
-        clearTimeout(escPressedTimer.value)
+  onKeyStroke(
+    'Escape',
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      if (settings.value.closeDrawerWithoutPressingEscAgain) {
+        clearTimeout(escPressedTimer.value!)
+        handleClose()
+        return
       }
-      escPressedTimer.value = setTimeout(() => {
-        isEscPressed.value = false
-      }, 1300)
-    }
-  }, { target: iframeRef.value?.contentWindow })
+      if (disableEscPress.value)
+        return
+      if (isEscPressed.value) {
+        handleClose()
+      }
+      else {
+        isEscPressed.value = true
+        if (escPressedTimer.value) {
+          clearTimeout(escPressedTimer.value)
+        }
+        escPressedTimer.value = setTimeout(() => {
+          isEscPressed.value = false
+        }, 1300)
+      }
+    },
+    { target: iframeRef.value?.contentWindow },
+  )
 })
 
 watchEffect(() => {
   if (isInIframe())
     return null
 
-  useEventListener(window, 'message', ({ data }) => {
+  useEventListener(window, 'message', ({ data, origin, source }) => {
+    if (source !== iframeRef.value?.contentWindow || origin !== new URL(currentUrl.value).origin)
+      return
     switch (data) {
       case DRAWER_VIDEO_ENTER_PAGE_FULL:
         headerShow.value = false
@@ -180,15 +186,11 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div
-    pos="absolute top-0 left-0" of-hidden w-full h-full
-    z-999999
-  >
+  <div pos="absolute top-0 left-0" of-hidden w-full h-full z-999999>
     <!-- Mask -->
     <Transition name="fade">
       <div
-        v-if="show"
-        pos="absolute bottom-0 left-0" w-full h-full bg="black opacity-60"
+        v-if="show" pos="absolute bottom-0 left-0" w-full h-full bg="black opacity-60"
         @click="handleClose"
       />
     </Transition>
@@ -196,16 +198,17 @@ watchEffect(() => {
     <Transition name="fade">
       <div
         v-if="headerShow"
-        pos="relative top-0" flex="~ items-center justify-end gap-2"
-        max-w="$bew-page-max-width" w-full h="$bew-top-bar-height"
-        m-auto px-4
+        pos="relative top-0"
+        flex="~ items-center justify-end gap-2"
+        max-w="$bew-page-max-width"
+        w-full
+        h="$bew-top-bar-height"
+        m-auto
+        px-4
         pointer-events-none
       >
         <Button
-          style="
-            --b-button-color: var(--bew-elevated-solid);
-            --b-button-color-hover: var(--bew-elevated-solid-hover);
-          "
+          style="--b-button-color: var(--bew-elevated-solid); --b-button-color-hover: var(--bew-elevated-solid-hover)"
           pointer-events-auto
           @click="handleOpenInNewTab"
         >
@@ -219,10 +222,7 @@ watchEffect(() => {
         </Button>
         <Button
           v-if="!isEscPressed"
-          style="
-            --b-button-color: var(--bew-elevated-solid);
-            --b-button-color-hover: var(--bew-elevated-solid-hover);
-          "
+          style="--b-button-color: var(--bew-elevated-solid); --b-button-color-hover: var(--bew-elevated-solid-hover)"
           pointer-events-auto
           @click="handleClose"
         >
@@ -232,11 +232,7 @@ watchEffect(() => {
           {{ $t('iframe_drawer.close') }}
           <kbd>Esc</kbd>
         </Button>
-        <Button
-          v-else
-          type="error"
-          @click="handleClose"
-        >
+        <Button v-else type="error" @click="handleClose">
           <template #left>
             <i i-mingcute:close-line />
           </template>
@@ -250,8 +246,12 @@ watchEffect(() => {
     <Transition name="drawer">
       <div
         v-if="show"
-        :pos="`absolute ${headerShow ? 'top-$bew-top-bar-height' : 'top-0'} left-0`" of-hidden bg="$bew-bg"
-        rounded="t-$bew-radius" w-full h-full
+        :pos="`absolute ${headerShow ? 'top-$bew-top-bar-height' : 'top-0'} left-0`"
+        of-hidden
+        bg="$bew-bg"
+        rounded="t-$bew-radius"
+        w-full
+        h-full
       >
         <Transition name="fade">
           <iframe
@@ -266,7 +266,8 @@ watchEffect(() => {
             pointer-events-auto
             pos="relative left-0"
             w-full
-            h-full @load="showIframe = true"
+            h-full
+            @load="showIframe = true"
           />
         </Transition>
       </div>

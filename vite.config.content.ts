@@ -2,7 +2,7 @@ import { defineConfig, transformWithEsbuild } from 'vite'
 
 import { isDev, isFirefox, isSafari, r } from './scripts/utils'
 import { bootstrapContentScript } from './src/contentScripts'
-import { supportsContentScript } from './src/contentScripts/pageScope'
+import { getPageType, supportsContentScript } from './src/contentScripts/pageScope'
 import { sharedConfig } from './vite.config'
 
 // bundling the content script using Vite
@@ -31,6 +31,7 @@ export default defineConfig({
         }
         collect('runtime.js')
         const code = `(() => {
+          const getPageType = ${getPageType.toString()};
           if (!(${supportsContentScript.toString()})(location.href, window.self !== window.top)) return;
           const runtime = globalThis.browser || globalThis.chrome;
           const url = path => runtime.runtime.getURL('dist/contentScripts/' + path);
@@ -42,10 +43,14 @@ export default defineConfig({
     },
   ],
   build: {
-    watch: isDev
-      ? { include: ['./**/*'] }
-      : undefined,
-    outDir: r(isFirefox ? 'extension-firefox/dist/contentScripts' : isSafari ? 'extension-safari/dist/contentScripts' : 'extension/dist/contentScripts'),
+    watch: isDev ? { include: ['./**/*'] } : undefined,
+    outDir: r(
+      isFirefox
+        ? 'extension-firefox/dist/contentScripts'
+        : isSafari
+          ? 'extension-safari/dist/contentScripts'
+          : 'extension/dist/contentScripts',
+    ),
     cssCodeSplit: true,
     emptyOutDir: false,
     sourcemap: false, // https://github.com/vitejs/vite-plugin-vue/issues/35

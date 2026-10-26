@@ -1,7 +1,7 @@
 import '~/styles'
 import 'uno.css'
 
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 
 import { initializeDarkTheme, useDark } from '~/composables/useDark'
 import { BEWLY_MOUNTED } from '~/constants/globalEvents'
@@ -9,11 +9,12 @@ import { settings, settingsReady } from '~/logic'
 import { setupApp } from '~/logic/common-setup'
 import RESET_BEWLY_CSS from '~/styles/reset.css?raw'
 import { runWhenIdle } from '~/utils/lazyLoad'
-import { compareVersions, injectCSS, isHomePage, isInIframe, isNotificationPage, isVideoOrBangumiPage } from '~/utils/main'
-import { SVG_ICONS } from '~/utils/svgIcons'
+import { compareVersions, injectCSS, isHomePage, isInIframe, isVideoOrBangumiPage } from '~/utils/main'
 
 import { version } from '../../package.json'
+import { startCommentFilter } from './commentFilter'
 import { mirrorExtensionStyles } from './extensionStyles'
+import { supportsContentScript } from './pageScope'
 
 const isFirefox: boolean = /Firefox/i.test(navigator.userAgent)
 
@@ -28,91 +29,11 @@ if (isFirefox) {
   window.clearTimeout = window.clearTimeout.bind(window)
 }
 
-const currentUrl = document.URL
-
-function isSupportedPages(): boolean {
-  if (isInIframe())
-    return false
-  if (
-    // homepage
-    isHomePage()
-    // video or bangumi page
-    || isVideoOrBangumiPage()
-    // popular page https://www.bilibili.com/v/popular/all
-    || /https?:\/\/(?:www\.)?bilibili\.com\/v\/popular\/all.*/.test(currentUrl)
-    // search page
-    || /https?:\/\/search\.bilibili\.com\.*/.test(currentUrl)
-    // moments page
-    // https://github.com/BewlyBewly/BewlyBewly/issues/1246
-    // https://github.com/BewlyBewly/BewlyBewly/issues/1256
-    // https://github.com/BewlyBewly/BewlyBewly/issues/1266
-    || /https?:\/\/t\.bilibili\.com(?!\/vote|\/share).*/.test(currentUrl)
-    // moment detail
-    || /https?:\/\/(?:www\.)?bilibili\.com\/opus\/.*/.test(currentUrl)
-    // history page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/history.*/.test(currentUrl)
-    || /https?:\/\/(?:www\.)?bilibili\.com\/account\/history.*/.test(currentUrl)
-    // watcher later page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/watchlater\/#\/list.*/.test(currentUrl)
-    || /https?:\/\/(?:www\.)?bilibili\.com\/watchlater\/list.*/.test(currentUrl)
-    // user space page
-    || /https?:\/\/space\.bilibili\.com\.*/.test(currentUrl)
-    // notifications page
-    || /https?:\/\/message\.bilibili\.com\.*/.test(currentUrl)
-    // bilibili channel page b站分区页面
-    || /https?:\/\/(?:www\.)?bilibili\.com\/v\/(?!popular).*/.test(currentUrl)
-    // anime page & chinese anime page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/(?:anime|guochuang).*/.test(currentUrl)
-    // channel page e.g. tv shows, movie, variety shows, mooc page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/(?:tv|movie|variety|mooc|documentary).*/.test(currentUrl)
-    // article page
-    || /https?:\/\/(?:www\.)?bilibili\.com\/read\/.*/.test(currentUrl)
-    // 404 page
-    || /^https?:\/\/(?:www\.)?bilibili\.com\/404.*$/.test(currentUrl)
-    // creative center page 創作中心頁
-    || /^https?:\/\/member\.bilibili\.com\/platform.*$/.test(currentUrl)
-    // account settings page 帳號設定頁
-    || /^https?:\/\/account\.bilibili\.com\/.*$/.test(currentUrl)
-    // login page
-    || /^https?:\/\/passport\.bilibili\.com\/login.*$/.test(currentUrl)
-    // music center page 新歌熱榜 https://music.bilibili.com/pc/music-center/
-    || /https?:\/\/music\.bilibili\.com\/pc\/music-center.*$/.test(currentUrl)
-  ) {
-    return true
-  }
-  else {
-    return false
-  }
+function isSupportedPages() {
+  return !isInIframe() && supportsContentScript(location.href, false)
 }
-
-export function isSupportedIframePages(): boolean {
-  if (
-    isInIframe()
-    && (
-      // supports Bilibili page URLs recorded in the dock
-      isHomePage()
-      // Since `Open in drawer` will open the video page within an iframe, so we need to support the following pages
-      || isVideoOrBangumiPage()
-      || /https?:\/\/search\.bilibili\.com\/all.*/.test(currentUrl)
-      || /https?:\/\/www\.bilibili\.com\/anime.*/.test(currentUrl)
-      || /https?:\/\/space\.bilibili\.com\/\d+\/favlist.*/.test(currentUrl)
-      || /https?:\/\/www\.bilibili\.com\/history.*/.test(currentUrl)
-      || /https?:\/\/www\.bilibili\.com\/watchlater\/#\/list.*/.test(currentUrl)
-      || /https?:\/\/www\.bilibili\.com\/watchlater\/list.*/.test(currentUrl)
-      // moments page
-      // https://github.com/BewlyBewly/BewlyBewly/issues/1246
-      // https://github.com/BewlyBewly/BewlyBewly/issues/1256
-      // https://github.com/BewlyBewly/BewlyBewly/issues/1266
-      || /https?:\/\/t\.bilibili\.com(?!\/vote|\/share).*/.test(currentUrl)
-      // notifications page, for `Open the notifications page as a drawer`
-      || isNotificationPage()
-    )
-  ) {
-    return true
-  }
-  else {
-    return false
-  }
+export function isSupportedIframePages() {
+  return isInIframe() && supportsContentScript(location.href, true)
 }
 
 let started = false
@@ -125,9 +46,19 @@ export async function start() {
   if (!isSupportedPages() && !isSupportedIframePages())
     return
   const disposeDarkTheme = initializeDarkTheme()
+  const stopCommentWatch = watch(
+    () => settings.value.blockAtComments,
+    (enabled, _, onCleanup) => {
+      if (enabled && isVideoOrBangumiPage())
+        onCleanup(startCommentFilter())
+    },
+    { immediate: true },
+  )
   window.addEventListener('pagehide', (event) => {
-    if (!event.persisted)
+    if (!event.persisted) {
       disposeDarkTheme()
+      stopCommentWatch()
+    }
   })
   let beforeLoadedStyleEl: HTMLStyleElement | undefined
 
@@ -142,7 +73,6 @@ export async function start() {
           document.head.removeChild(darkModeStyle)
       })
     }
-
     else {
       document.documentElement.classList.remove('bewly-design')
     }
@@ -168,10 +98,14 @@ export async function start() {
   `)
   }
 
-  window.addEventListener(BEWLY_MOUNTED, () => {
-    if (beforeLoadedStyleEl)
-      beforeLoadedStyleEl.remove()
-  }, { once: true })
+  window.addEventListener(
+    BEWLY_MOUNTED,
+    () => {
+      if (beforeLoadedStyleEl)
+        beforeLoadedStyleEl.remove()
+    },
+    { once: true },
+  )
 
   // Set the original Bilibili top bar to `display: none` to prevent it from showing before the load
   // see: https://github.com/BewlyBewly/BewlyBewly/issues/967
@@ -185,15 +119,22 @@ export async function start() {
     // Remove the original Bilibili homepage if in Bilibili homepage & useOriginalBilibiliHomepage is enabled
     if (changeHomePage) {
       originalTopBar = document.querySelector<HTMLElement>('.bili-header')
-      const originalTopBarInnerUselessContents = document.querySelectorAll<HTMLElement>('.bili-header > *:not(.bili-header__bar)')
+      const originalTopBarInnerUselessContents = document.querySelectorAll<HTMLElement>(
+        '.bili-header > *:not(.bili-header__bar)',
+      )
 
       if (originalTopBar) {
-      // always show the background on the original bilibili top bar
+        // always show the background on the original bilibili top bar
         originalTopBar.querySelector('.bili-header__bar')?.classList.add('slide-down')
       }
 
       // Remove the original Bilibili homepage if in Bilibili homepage & useOriginalBilibiliHomepage is enabled
-      document.body.replaceChildren()
+      await injectApp()
+      const container = document.getElementById('bewly')!
+      for (const child of Array.from(document.body.children)) {
+        if (child !== container && child !== originalTopBar)
+          child.remove()
+      }
 
       // Remove the Bilibili Evolved homepage & Bilibili-Gate homepage
       injectCSS(`
@@ -203,14 +144,17 @@ export async function start() {
     `)
 
       if (originalTopBarInnerUselessContents)
-        originalTopBarInnerUselessContents.forEach(item => (item as HTMLElement).style.display = 'none')
+        originalTopBarInnerUselessContents.forEach(item => ((item as HTMLElement).style.display = 'none'))
       if (originalTopBar)
         document.body.appendChild(originalTopBar)
     }
 
     if (isSupportedPages() || isSupportedIframePages()) {
-    // Then inject the app
-      if (isHomePage()) {
+      // Then inject the app
+      if (changeHomePage) {
+        // Already mounted before taking over the original homepage.
+      }
+      else if (isHomePage()) {
         await injectApp()
       }
       else {
@@ -223,15 +167,15 @@ export async function start() {
       document.documentElement.removeChild(removeOriginalTopBar)
   }
 
-  const mount = () => onDOMLoaded().catch((error) => {
-    beforeLoadedStyleEl?.remove()
-    removeOriginalTopBar.remove()
-    console.error(error)
-  })
+  const mount = () =>
+    onDOMLoaded().catch((error) => {
+      beforeLoadedStyleEl?.remove()
+      removeOriginalTopBar.remove()
+      console.error(error)
+    })
   if (document.readyState !== 'loading')
     await mount()
-  else
-    document.addEventListener('DOMContentLoaded', mount, { once: true })
+  else document.addEventListener('DOMContentLoaded', mount, { once: true })
 }
 
 function injectAppWhenIdle() {
@@ -301,16 +245,18 @@ async function injectApp() {
 
   // startShadowDOMStyleInjection()
 
-  // inject svg icons
-  const svgDiv = document.createElement('div')
-  svgDiv.innerHTML = SVG_ICONS
-  shadowDOM.appendChild(svgDiv)
-
   document.body.appendChild(container)
 
   const app = createApp(App)
-  await setupApp(app)
-  app.mount(root)
+  try {
+    await setupApp(app)
+    app.mount(root)
+  }
+  catch (error) {
+    container.remove()
+    styles.dispose()
+    throw error
+  }
   window.addEventListener('pagehide', (event) => {
     if (!event.persisted) {
       app.unmount()

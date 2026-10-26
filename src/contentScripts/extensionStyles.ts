@@ -2,13 +2,24 @@
 export function mirrorExtensionStyles(root: ShadowRoot | HTMLElement, prefix: string) {
   const copies = new Map<HTMLLinkElement, HTMLLinkElement>()
   const copy = (node: Node): Promise<void> | undefined => {
-    if (!(node instanceof HTMLLinkElement) || node.rel !== 'stylesheet' || !node.href.startsWith(prefix) || copies.has(node))
+    if (
+      !(node instanceof HTMLLinkElement)
+      || node.rel !== 'stylesheet'
+      || !node.href.startsWith(prefix)
+      || copies.has(node)
+    ) {
       return
+    }
     const link = node.cloneNode() as HTMLLinkElement
     copies.set(node, link)
     const ready = new Promise<void>((resolve) => {
-      link.onload = () => resolve()
-      link.onerror = () => resolve()
+      const timer = setTimeout(resolve, 3000)
+      const done = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      link.onload = done
+      link.onerror = done
     })
     root.appendChild(link)
     return ready

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useEventListener } from '@vueuse/core'
 import type { Ref } from 'vue'
 
 import Empty from '~/components/Empty.vue'
 import Loading from '~/components/Loading.vue'
+import { useAsyncTask } from '~/composables/useAsyncTask'
 import api from '~/utils/api'
 import { calcCurrentTime } from '~/utils/dataFormatter'
 import { getUserID, removeHttpFromUrl, scrollToTop } from '~/utils/main'
@@ -16,15 +18,13 @@ const activatedMediaId = ref<number>(0)
 const activatedFavoriteTitle = ref<string>()
 const currentPageNum = ref<number>(1)
 
-const isLoading = ref<boolean>(false)
+const { isLoading, loadFailed, run } = useAsyncTask()
 // when noMoreContent is true, the user can't scroll down to load more content
 const noMoreContent = ref<boolean>(false)
 const favoriteVideosWrap = ref<HTMLElement>() as Ref<HTMLElement>
 
 const viewAllUrl = computed((): string => {
-  return `//space.bilibili.com/${getUserID()}/favlist?fid=${
-    activatedMediaId.value
-  }&ftype=create`
+  return `//space.bilibili.com/${getUserID()}/favlist?fid=${activatedMediaId.value}&ftype=create`
 })
 
 const playAllUrl = computed((): string => {
@@ -40,6 +40,7 @@ watch(activatedMediaId, (newVal: number, oldVal: number) => {
     scrollToTop(favoriteVideosWrap.value)
 
   currentPageNum.value = 1
+  noMoreContent.value = false
   getFavoriteResources()
 })
 
@@ -48,77 +49,45 @@ onMounted(() => {
 })
 
 async function initData() {
-  await getFavoriteCategories()
-  activatedMediaId.value = favoriteCategories[0].id
-  activatedFavoriteTitle.value = favoriteCategories[0].title
-
-  if (favoriteVideosWrap.value) {
-    favoriteVideosWrap.value.addEventListener('scroll', () => {
-      // When you scroll to the bottom, they will automatically
-      // add the next page of data to the history list
-      if (
-        favoriteVideosWrap.value.clientHeight
-        + favoriteVideosWrap.value.scrollTop
-        >= favoriteVideosWrap.value.scrollHeight - 20
-        && favoriteResources.length > 0
-        && !isLoading.value
-      ) {
-        if (activatedMediaId.value && !noMoreContent.value) {
-          currentPageNum.value++
-          getFavoriteResources()
-        }
+  await run(
+    () => api.favorite.getFavoriteCategories({ up_mid: getUserID() }),
+    (res) => {
+      if (res.code !== 0)
+        throw new Error(res.message)
+      favoriteCategories.splice(0, favoriteCategories.length, ...(res.data.list || []))
+      const first = favoriteCategories[0]
+      if (first) {
+        activatedMediaId.value = first.id
+        activatedFavoriteTitle.value = first.title
       }
-    })
-  }
+    },
+  )
 }
 
-async function getFavoriteCategories() {
-  await api.favorite.getFavoriteCategories({
-    up_mid: getUserID(),
-  })
-    .then((res) => {
-      if (res.code === 0) {
-        Object.assign(favoriteCategories, res.data.list)
-        noMoreContent.value = false
-      }
-      isLoading.value = false
-    })
-}
+useEventListener(favoriteVideosWrap, 'scroll', () => {
+  const element = favoriteVideosWrap.value
+  if (element.clientHeight + element.scrollTop >= element.scrollHeight - 20 && !isLoading.value && !noMoreContent.value)
+    getFavoriteResources()
+})
 
-/**
- * Get favorite video resources
- */
 function getFavoriteResources() {
-  isLoading.value = true
-  api.favorite.getFavoriteResources({
-    media_id: activatedMediaId.value,
-    pn: currentPageNum.value,
-    keyword: '',
-  })
-    .then((res) => {
-      const { code, data } = res
-      if (code === 0) {
-        if ('medias' in data && Array.isArray(data.medias) && data.medias.length > 0)
-          favoriteResources.push(...data.medias)
-
-        if (
-          !data.medias
-          || (data.medias.length < 20 && favoriteResources.length > 0)
-        ) {
-          isLoading.value = false
-          noMoreContent.value = true
-          return
-        }
-
-        noMoreContent.value = false
-      }
-      isLoading.value = false
-    })
+  return run(
+    () => api.favorite.getFavoriteResources({ media_id: activatedMediaId.value, pn: currentPageNum.value }),
+    (res) => {
+      if (res.code !== 0)
+        throw new Error(res.message)
+      const items = res.data.medias || []
+      favoriteResources.push(...items)
+      noMoreContent.value = items.length < 20
+      currentPageNum.value++
+    },
+  )
 }
 
 function refreshFavoriteResources() {
   favoriteResources.length = 0
   currentPageNum.value = 1
+  noMoreContent.value = false
   getFavoriteResources()
 }
 
@@ -138,8 +107,10 @@ defineExpose({
 
 <template>
   <div
-    style="backdrop-filter: var(--bew-filter-glass-1);"
-    h="[calc(100vh-100px)]" max-h-500px important-overflow-y-overlay
+    style="backdrop-filter: var(--bew-filter-glass-1)"
+    h="[calc(100vh-100px)]"
+    max-h-500px
+    important-overflow-y-overlay
     bg="$bew-elevated"
     w="450px"
     rounded="$bew-radius"
@@ -149,30 +120,18 @@ defineExpose({
   >
     <!-- top bar -->
     <header
-      flex="~" items-center justify-between
-      p="x-6"
-      pos="sticky top-0 left-0"
-      w="full"
-      h-50px
-      z="2"
+      flex="~" items-center justify-between p="x-6" pos="sticky top-0 left-0"
+      w="full" h-50px z="2"
     >
       <h3 cursor="pointer" font-600 @click="scrollToTop(favoriteVideosWrap)">
         {{ activatedFavoriteTitle }}
       </h3>
 
       <div flex="~ gap-4">
-        <ALink
-          :href="playAllUrl"
-          type="topBar"
-          flex="~" items="center"
-        >
+        <ALink :href="playAllUrl" type="topBar" flex="~" items="center">
           <span text="sm">{{ $t('common.play_all') }}</span>
         </ALink>
-        <ALink
-          :href="viewAllUrl"
-          type="topBar"
-          flex="~" items="center"
-        >
+        <ALink :href="viewAllUrl" type="topBar" flex="~" items="center">
           <span text="sm">{{ $t('common.view_all') }}</span>
         </ALink>
       </div>
@@ -180,9 +139,8 @@ defineExpose({
 
     <main flex="~" h="[calc(100%-50px)]" rounded="$bew-radius">
       <aside
-        pos="sticky top-50px left-0"
-        w="140px" h-full overflow="y-auto"
-        flex="shrink-0" bg="$bew-fill-1"
+        pos="sticky top-50px left-0" w="140px" h-full overflow="y-auto" flex="shrink-0"
+        bg="$bew-fill-1"
       >
         <ul grid="~ cols-1">
           <li
@@ -201,14 +159,13 @@ defineExpose({
 
       <!-- Favorite videos wrapper -->
       <div
-        ref="favoriteVideosWrap"
-        flex="~ col gap-2 1"
-        overflow="y-auto"
-        p="x-4"
-        pos="relative"
+        ref="favoriteVideosWrap" flex="~ col gap-2 1" overflow="y-auto" p="x-4" pos="relative"
         h-full
       >
         <!-- loading -->
+        <Button v-if="loadFailed" @click="activatedMediaId ? getFavoriteResources() : initData()">
+          {{ $t('common.retry') }}
+        </Button>
         <Loading
           v-if="isLoading && favoriteResources.length === 0"
           pos="absolute left-0"
@@ -222,33 +179,26 @@ defineExpose({
         />
 
         <!-- empty -->
-        <Empty
-          v-if="!isLoading && favoriteResources.length === 0"
-          w="full" h="full"
-          rounded="$bew-radius-half"
-        />
+        <Empty v-if="!isLoading && favoriteResources.length === 0" w="full" h="full" rounded="$bew-radius-half" />
 
         <!-- favorites -->
         <TransitionGroup name="list">
           <ALink
             v-for="item in favoriteResources"
             :key="item.id"
-            :href="isMusic(item) ? `https://www.bilibili.com/audio/au${item.id}` : `//www.bilibili.com/video/${item.bvid}`"
+            :href="
+              isMusic(item) ? `https://www.bilibili.com/audio/au${item.id}` : `//www.bilibili.com/video/${item.bvid}`
+            "
             type="topBar"
             hover:bg="$bew-fill-2"
             rounded="$bew-radius"
-            m="last:b-4" p="2"
+            m="last:b-4"
+            p="2"
             class="group"
             transition="~ duration-300"
           >
             <section flex="~ gap-4" item-start>
-              <div
-                bg="$bew-skeleton"
-                w="120px"
-                flex="shrink-0"
-                rounded="$bew-radius-half"
-                overflow="hidden"
-              >
+              <div bg="$bew-skeleton" w="120px" flex="shrink-0" rounded="$bew-radius-half" overflow="hidden">
                 <div pos="relative">
                   <img
                     w="120px"
@@ -272,17 +222,10 @@ defineExpose({
 
               <!-- Description -->
               <div>
-                <h3
-                  class="keep-two-lines"
-                >
+                <h3 class="keep-two-lines">
                   {{ item.title }}
                 </h3>
-                <div
-                  text="$bew-text-2 sm"
-                  m="t-2"
-                  flex="~"
-                  items-center
-                >
+                <div text="$bew-text-2 sm" m="t-2" flex="~" items-center>
                   {{ item.upper.name }}
                 </div>
               </div>

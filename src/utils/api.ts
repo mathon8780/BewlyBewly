@@ -1,51 +1,59 @@
+import browser from 'webextension-polyfill'
+
 import type { API_COLLECTION } from '~/background/messageListeners/api'
+import type { WatchListResult } from '~/models/anime/watchList'
+import type { HistoryResult } from '~/models/history/history'
+import type { VideoInfo } from '~/models/video/videoInfo'
+import type { VideoPreviewResult } from '~/models/video/videoPreview'
 
-type CamelCase<S extends string> = S extends `${infer P1}_${infer P2}${infer P3}`
-  ? `${Lowercase<P1>}${Uppercase<P2>}${CamelCase<P3>}`
-  : Lowercase<S>
-
-type APIFunction<T = typeof API_COLLECTION> = {
-  [K in keyof T as CamelCase<string & K>]: {
-    // @ts-expect-error allow params
-    [P in keyof T[K]]: T[K][P] extends Function ? T[K][P] : Lowercase<T[K][P]['_fetch']['method']> extends 'get' ? (options?: Partial<T[K][P]['params']>) => Promise<any> : (options?: Partial<T[K][P]['params'] & T[K][P]['_fetch']['body']>) => Promise<any>
+interface Responses {
+  getAnimeWatchList: WatchListResult
+  getHistoryList: HistoryResult
+  getVideoInfo: VideoInfo
+  getVideoPreview: VideoPreviewResult
+}
+type Params<E> = (E extends { params: infer P } ? P : unknown) & (E extends { _fetch: { body: infer B } } ? B : unknown)
+type Client = {
+  [K in keyof typeof API_COLLECTION as K extends string ? Lowercase<K> : never]: {
+    [P in keyof (typeof API_COLLECTION)[K]]: (
+      options?: Partial<Params<(typeof API_COLLECTION)[K][P]>>,
+      request?: { signal: AbortSignal },
+    ) => Promise<P extends keyof Responses ? Responses[P] : any>
   }
 }
 
-// eslint-disable-next-line ts/no-unsafe-declaration-merging
-export interface APIClient extends APIFunction<typeof API_COLLECTION> {
-
-}
-
-// eslint-disable-next-line ts/no-unsafe-declaration-merging
-export class APIClient {
-  private readonly cache = new Map<string | symbol, any>()
-
-  constructor() {
-    // @ts-expect-error ignore
-    return new Proxy({}, {
-      get: (_, namespace) => { // namespace
-        if (this.cache.has(namespace)) {
-          return this.cache.get(namespace)
-        }
-        else {
-          const api = new Proxy({}, {
-            get(_, p) {
-              return (options?: object) => {
-                return browser.runtime.sendMessage({
-                  contentScriptQuery: p,
-                  ...options,
-                })
-              }
-            },
-          })
-          this.cache.set(namespace, api)
-          return api
-        }
-      },
-    })
+async function send(query: string, params: object = {}, signal?: AbortSignal) {
+  signal?.throwIfAborted()
+  const requestId = signal ? crypto.randomUUID() : undefined
+  const cancel = () => {
+    void browser.runtime.sendMessage({ cancelRequest: requestId }).catch(console.error)
+  }
+  const response = browser.runtime.sendMessage({ ...params, contentScriptQuery: query, requestId })
+  signal?.addEventListener('abort', cancel, { once: true })
+  try {
+    return await response
+  }
+  finally {
+    signal?.removeEventListener('abort', cancel)
   }
 }
 
-const api = new APIClient()
-
+const namespaces = new Map<PropertyKey, object>()
+const api = new Proxy({} as Client, {
+  get(_, namespace) {
+    if (!namespaces.has(namespace)) {
+      namespaces.set(
+        namespace,
+        new Proxy(
+          {},
+          {
+            get: (_, query: string) => (params?: object, request?: { signal: AbortSignal }) =>
+              send(query, params, request?.signal),
+          },
+        ),
+      )
+    }
+    return namespaces.get(namespace)
+  },
+})
 export default api

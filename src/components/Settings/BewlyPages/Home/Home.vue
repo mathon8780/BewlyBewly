@@ -38,56 +38,60 @@ function handleRevoke() {
   revokeAccessKey()
 }
 
-watch(showQRCodeDialog, (visible, _, onCleanup) => {
-  if (!visible)
-    return
-  const controller = new AbortController()
-  const { signal } = controller
-  let timer: ReturnType<typeof setTimeout>
-  let authCode = ''
-  loginQRCodeUrl.value = ''
-  qrcodeMsg.value = ''
-  onCleanup(() => {
-    clearTimeout(timer)
-    controller.abort()
-  })
+watch(
+  showQRCodeDialog,
+  (visible, _, onCleanup) => {
+    if (!visible)
+      return
+    const controller = new AbortController()
+    const { signal } = controller
+    let timer: ReturnType<typeof setTimeout>
+    let authCode = ''
+    loginQRCodeUrl.value = ''
+    qrcodeMsg.value = ''
+    onCleanup(() => {
+      clearTimeout(timer)
+      controller.abort()
+    })
 
-  async function poll() {
-    try {
-      if (!authCode) {
-        const res = await getTVLoginQRCode(signal)
-        if (signal.aborted)
-          return
-        if (res.code !== 0)
-          throw new Error(res.message)
-        loginQRCodeUrl.value = res.data.url
-        authCode = res.data.auth_code
-      }
-      else {
-        const res = await pollTVLoginQRCode(authCode, signal)
-        if (signal.aborted)
-          return
-        if (res.code === 0) {
-          accessKey.value = res.data.access_token
-          showQRCodeDialog.value = false
-          toast.success('授权成功')
-          return
+    async function poll() {
+      try {
+        if (!authCode) {
+          const res = await getTVLoginQRCode(signal)
+          if (signal.aborted)
+            return
+          if (res.code !== 0)
+            throw new Error(res.message)
+          loginQRCodeUrl.value = res.data.url
+          authCode = res.data.auth_code
         }
-        qrcodeMsg.value = res.message
-        if (res.code === 86038)
-          authCode = ''
-        else if (res.code !== 86039 && res.code !== 86090)
-          throw new Error(res.message)
+        else {
+          const res = await pollTVLoginQRCode(authCode, signal)
+          if (signal.aborted)
+            return
+          if (res.code === 0) {
+            accessKey.value = res.data.access_token
+            showQRCodeDialog.value = false
+            toast.success('授权成功')
+            return
+          }
+          qrcodeMsg.value = res.message
+          if (res.code === 86038)
+            authCode = ''
+          else if (res.code !== 86039 && res.code !== 86090)
+            throw new Error(res.message)
+        }
+        timer = setTimeout(poll, 3000)
       }
-      timer = setTimeout(poll, 3000)
+      catch (error) {
+        if (!signal.aborted)
+          toast.error(String(error))
+      }
     }
-    catch (error) {
-      if (!signal.aborted)
-        toast.error(String(error))
-    }
-  }
-  void poll()
-}, { flush: 'sync' })
+    void poll()
+  },
+  { flush: 'sync' },
+)
 
 function handleCloseQRCodeDialog() {
   showQRCodeDialog.value = false
@@ -118,7 +122,12 @@ function handleImport(filterType: 'title' | 'user') {
       const fileContent = await file.text()
       const importedFilters = JSON.parse(fileContent) as { keyword: string, remark: string }[]
 
-      if (!Array.isArray(importedFilters) || !importedFilters.every(filter => 'keyword' in filter && 'remark' in filter)) {
+      if (
+        !Array.isArray(importedFilters)
+        || !importedFilters.every(
+          filter => filter && typeof filter.keyword === 'string' && typeof filter.remark === 'string',
+        )
+      ) {
         throw new Error('Invalid file format')
       }
 
@@ -171,8 +180,7 @@ function handleToggleHomeTab(tab: any) {
   // Prevent disabling all tabs if there is only one
   if (settings.value.homePageTabVisibilityList.filter(tab => tab.visible === true).length > 1)
     tab.visible = !tab.visible
-  else
-    tab.visible = true
+  else tab.visible = true
 }
 </script>
 
@@ -185,7 +193,11 @@ function handleToggleHomeTab(tab: any) {
         </template>
         <div w-full flex rounded="$bew-radius" bg="$bew-fill-1" p-1>
           <div
-            flex-1 py-1 cursor-pointer text-center rounded="$bew-radius"
+            flex-1
+            py-1
+            cursor-pointer
+            text-center
+            rounded="$bew-radius"
             :style="{
               background: settings.recommendationMode === 'web' ? 'var(--bew-theme-color)' : '',
               color: settings.recommendationMode === 'web' ? 'white' : '',
@@ -195,7 +207,11 @@ function handleToggleHomeTab(tab: any) {
             Web
           </div>
           <div
-            flex-1 py-1 cursor-pointer text-center rounded="$bew-radius"
+            flex-1
+            py-1
+            cursor-pointer
+            text-center
+            rounded="$bew-radius"
             :style="{
               background: settings.recommendationMode === 'app' ? 'var(--bew-theme-color)' : '',
               color: settings.recommendationMode === 'app' ? 'white' : '',
@@ -212,7 +228,9 @@ function handleToggleHomeTab(tab: any) {
           {{ $t('settings.authorize_app_desc') }}
           <br>
           <a
-            href="https://github.com/indefined/UserScripts/tree/master/bilibiliHome#%E6%8E%88%E6%9D%83%E8%AF%B4%E6%98%8E" target="_blank" color="$bew-theme-color"
+            href="https://github.com/indefined/UserScripts/tree/master/bilibiliHome#%E6%8E%88%E6%9D%83%E8%AF%B4%E6%98%8E"
+            target="_blank"
+            color="$bew-theme-color"
           >{{ $t('settings.authorize_app_more_info_access_key') }}</a>
         </template>
 
@@ -221,7 +239,11 @@ function handleToggleHomeTab(tab: any) {
             {{ $t('settings.btn.authorize') }}...
           </Button>
           <Button
-            v-else type="secondary" center block style="--b-button-text-color: var(--bew-error-color)"
+            v-else
+            type="secondary"
+            center
+            block
+            style="--b-button-text-color: var(--bew-error-color)"
             @click="handleRevoke"
           >
             {{ $t('settings.btn.revoke') }}
@@ -235,7 +257,8 @@ function handleToggleHomeTab(tab: any) {
         max-width="800px"
         append-to-bewly-body
         :show-footer="false"
-        :title="$t('settings.authorize_app')" center
+        :title="$t('settings.authorize_app')"
+        center
         @close="handleCloseQRCodeDialog"
       >
         <div flex="~ col gap-4 items-center">
@@ -257,10 +280,7 @@ function handleToggleHomeTab(tab: any) {
 
           <p>{{ qrcodeMsg }}</p>
 
-          <Button
-            type="secondary"
-            @click="handleAuthorize"
-          >
+          <Button type="secondary" @click="handleAuthorize">
             {{ $t('common.operation.refresh') }}
           </Button>
         </div>
@@ -271,7 +291,10 @@ function handleToggleHomeTab(tab: any) {
       :title="$t('settings.group_recommendation_filters')"
       :desc="$t('settings.group_recommendation_filters_desc')"
     >
-      <SettingsItem :title="$t('settings.disable_filters_for_followed_users')" :desc="$t('settings.disable_filters_for_followed_users_desc')">
+      <SettingsItem
+        :title="$t('settings.disable_filters_for_followed_users')"
+        :desc="$t('settings.disable_filters_for_followed_users_desc')"
+      >
         <Radio v-model="settings.disableFilterForFollowedUser" />
       </SettingsItem>
       <SettingsItem :title="$t('settings.filter_out_vertical_videos')">
@@ -281,7 +304,10 @@ function handleToggleHomeTab(tab: any) {
         <div flex="~ justify-end" w-full>
           <Input
             v-if="settings.enableFilterByViewCount"
-            v-model="settings.filterByViewCount" type="number" :min="1" :max="1000000"
+            v-model="settings.filterByViewCount"
+            type="number"
+            :min="1"
+            :max="1000000"
             flex-1
           >
             <template #suffix>
@@ -295,7 +321,10 @@ function handleToggleHomeTab(tab: any) {
         <div flex="~ justify-end" w-full>
           <Input
             v-if="settings.enableFilterByDuration"
-            v-model="settings.filterByDuration" type="number" :min="1" :max="1000000"
+            v-model="settings.filterByDuration"
+            type="number"
+            :min="1"
+            :max="1000000"
             flex-1
           >
             <template #suffix>
@@ -370,9 +399,7 @@ function handleToggleHomeTab(tab: any) {
       </SettingsItem>
     </SettingsItemGroup>
 
-    <SettingsItemGroup
-      :title="$t('settings.group_home_tabs')"
-    >
+    <SettingsItemGroup :title="$t('settings.group_home_tabs')">
       <SettingsItem :desc="$t('settings.home_tabs_adjustment_desc')">
         <template #title>
           <div flex="~ gap-4 items-center">
@@ -394,7 +421,11 @@ function handleToggleHomeTab(tab: any) {
           >
             <template #item="{ element }">
               <div
-                flex="~ gap-2 items-center" p="x-4 y-2" bg="$bew-fill-1" rounded="$bew-radius" cursor-all-scroll
+                flex="~ gap-2 items-center"
+                p="x-4 y-2"
+                bg="$bew-fill-1"
+                rounded="$bew-radius"
+                cursor-all-scroll
                 duration-300
                 :style="{
                   background: element.visible ? 'var(--bew-theme-color-20)' : 'var(--bew-fill-1)',
@@ -402,7 +433,7 @@ function handleToggleHomeTab(tab: any) {
                 }"
                 @click="handleToggleHomeTab(element)"
               >
-                {{ $t(mainStore.homeTabs.find(tab => tab.page === element.page)?.i18nKey ?? '') }}
+                {{ $t(mainStore.homeTabs.find((tab) => tab.page === element.page)?.i18nKey ?? '') }}
               </div>
             </template>
           </draggable>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import browser from 'webextension-polyfill'
 
@@ -10,7 +9,6 @@ import { removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
 const animeTimeTable = reactive<TimetableItem[]>([])
-const animeTimeTableWrap = ref<HTMLElement>() as Ref<HTMLElement>
 
 const daysOfTheWeekList = computed(() => {
   return [
@@ -34,12 +32,11 @@ function refreshAnimeTimeTable() {
 }
 
 function getAnimeTimeTable() {
-  api.anime.getAnimeTimeTable()
-    .then((res: TimetableResult) => {
-      const { code, result } = res
-      if (code === 0)
-        Object.assign(animeTimeTable, result as TimetableItem[])
-    })
+  api.anime.getAnimeTimeTable().then((res: TimetableResult) => {
+    const { code, result } = res
+    if (code === 0)
+      Object.assign(animeTimeTable, result as TimetableItem[])
+  })
 }
 
 defineExpose({ refreshAnimeTimeTable })
@@ -48,7 +45,7 @@ defineExpose({ refreshAnimeTimeTable })
 <template>
   <div>
     <HorizontalScrollView>
-      <ul ref="animeTimeTableWrap" flex="~">
+      <ul flex="~">
         <li
           v-for="item in animeTimeTable"
           :key="item.date_ts"
@@ -74,34 +71,18 @@ defineExpose({ refreshAnimeTimeTable })
                   ? `drop-shadow(50px 0 var(--bew-text-1))`
                   : `drop-shadow(38px 0 var(--bew-text-3))`,
               }"
-              style="
-                transform: translateX(-100%);
-                background-size: 247px 663px;
-              "
+              style="transform: translateX(-100%); background-size: 247px 663px"
             />
             <h3 :text="item.is_today ? '$bew-text-1' : '$bew-text-3'">
-              <span text="2xl" font-bold>{{
-                daysOfTheWeekList[item.day_of_week - 1]
-              }}</span>
-              <span
-                :text="`base ${item.is_today ? '$bew-text-2' : '$bew-text-3'}`"
-                ml-2
-              >{{ item.date }}</span>
+              <span text="2xl" font-bold>{{ daysOfTheWeekList[item.day_of_week - 1] }}</span>
+              <span :text="`base ${item.is_today ? '$bew-text-2' : '$bew-text-3'}`" ml-2>{{ item.date }}</span>
             </h3>
           </div>
-          <span
-            block
-            w-full
-            h-4px
-            :bg="item.is_today ? '$bew-theme-color' : '$bew-fill-3'"
-            rounded-8
-          />
+          <span block w-full h-4px :bg="item.is_today ? '$bew-theme-color' : '$bew-fill-3'" rounded-8 />
           <ul
             grid
             gap-4
-            :border-l="`~ 2px dashed ${
-              item.is_today ? '$bew-theme-color-40' : '$bew-fill-2'
-            }`"
+            :border-l="`~ 2px dashed ${item.is_today ? '$bew-theme-color-40' : '$bew-fill-2'}`"
             p="t-3 l-3"
           >
             <li v-for="episode in item.episodes" :key="episode.season_id">
@@ -130,13 +111,12 @@ defineExpose({ refreshAnimeTimeTable })
               <div flex gap-4>
                 <a
                   :href="`//www.bilibili.com/bangumi/play/ss${episode.season_id}`"
-                  target="_blank" tabindex="-1"
+                  target="_blank"
+                  tabindex="-1"
                   shrink-0
                 >
                   <img
-                    :src="`${removeHttpFromUrl(
-                      episode.square_cover,
-                    )}@80w_80h.webp`"
+                    :src="`${removeHttpFromUrl(episode.square_cover)}@80w_80h.webp`"
                     :alt="episode.title"
                     w-18
                     aspect="square"
@@ -144,10 +124,9 @@ defineExpose({ refreshAnimeTimeTable })
                   >
                 </a>
                 <div flex="~ col">
-                  <a
-                    :href="`//www.bilibili.com/bangumi/play/ss${episode.season_id}`"
-                    target="_blank"
-                  >{{ episode.title }}</a>
+                  <a :href="`//www.bilibili.com/bangumi/play/ss${episode.season_id}`" target="_blank">{{
+                    episode.title
+                  }}</a>
                   <p mt-auto text="$bew-theme-color">
                     {{ episode.pub_index }}
                   </p>

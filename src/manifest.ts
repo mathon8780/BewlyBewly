@@ -5,7 +5,7 @@ import type PkgType from '../package.json'
 import { isDev, isFirefox, isSafari, port, r } from '../scripts/utils'
 
 export async function getManifest() {
-  const pkg = await fs.readJSON(r('package.json')) as typeof PkgType
+  const pkg = (await fs.readJSON(r('package.json'))) as typeof PkgType
 
   // update this file to update this manifest.json
   // can also be conditional based on your need
@@ -26,9 +26,10 @@ export async function getManifest() {
 
     // Setting `persistent` to true in Manifest V3 results in an error in Firefox
     // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background
-    background: (isFirefox || isSafari)
-      ? { scripts: ['./dist/background/index.js'], persistent: isFirefox ? undefined : false }
-      : { service_worker: './dist/background/index.js' },
+    background:
+      isFirefox || isSafari
+        ? { scripts: ['./dist/background/index.js'], persistent: isFirefox ? undefined : false }
+        : { service_worker: './dist/background/index.js' },
 
     icons: {
       512: './assets/icon-512.png',
@@ -36,15 +37,9 @@ export async function getManifest() {
     permissions: [
       'storage',
       'declarativeNetRequest',
-      'tabs',
-      ...isFirefox
-        ? ['webRequest', 'webRequestBlocking', 'cookies']
-        : [],
+      ...(isFirefox ? ['webRequest', 'webRequestBlocking', 'cookies'] : []),
     ],
-    host_permissions: [
-      '*://*.bilibili.com/*',
-      '*://*.hdslb.com/*',
-    ],
+    host_permissions: ['*://*.bilibili.com/*', '*://*.hdslb.com/*'],
     content_scripts: [
       {
         matches: [
@@ -80,15 +75,18 @@ export async function getManifest() {
         js: ['./dist/inject/index.js'],
         run_at: 'document_start',
         all_frames: true,
-        // eslint-disable-next-line ts/ban-ts-comment
-        // @ts-expect-error
         world: 'MAIN',
       },
     ],
     web_accessible_resources: [
       {
-        resources: ['dist/contentScripts/*.js', 'dist/contentScripts/chunks/*.js', 'dist/contentScripts/styles/*.css', 'assets/*'],
-        matches: ['<all_urls>'],
+        resources: [
+          'dist/contentScripts/*.js',
+          'dist/contentScripts/chunks/*.js',
+          'dist/contentScripts/styles/*.css',
+          'assets/*',
+        ],
+        matches: ['*://*.bilibili.com/*', '*://*.hdslb.com/*'],
         // matches: ['./assets/*'],
       },
     ],
@@ -98,11 +96,10 @@ export async function getManifest() {
         }
       : {
           extension_pages: isDev
-          // this is required on dev for Vite script to load
             ? `script-src 'self' http://localhost:${port}; object-src 'self' http://localhost:${port}`
             : 'script-src \'self\'; object-src \'self\'',
         },
-    ...isFirefox
+    ...(isFirefox
       ? {}
       : {
           declarative_net_request: {
@@ -114,18 +111,24 @@ export async function getManifest() {
               },
             ],
           },
-        },
+        }),
   }
 
   if (isDev)
     manifest.permissions?.push('webNavigation')
 
   if (isFirefox) {
-    const gecko = {
+    const gecko: NonNullable<Manifest.WebExtensionManifest['browser_specific_settings']>['gecko'] = {
       id: 'mathon@bewlybewly.com',
       strict_min_version: '140.0',
       data_collection_permissions: {
-        required: ['authenticationInfo', 'personallyIdentifyingInfo', 'websiteContent', 'websiteActivity', 'searchTerms'],
+        required: [
+          'authenticationInfo',
+          'personallyIdentifyingInfo',
+          'websiteContent',
+          'websiteActivity',
+          'searchTerms',
+        ],
       },
     }
     manifest.browser_specific_settings = {

@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { useToast } from 'vue-toastification'
 import browser from 'webextension-polyfill'
 
 import { originalSettings, settings } from '~/logic'
+import { parseSettings } from '~/logic/settings'
+import { cleanupWallpapers, wallpaperBytes } from '~/logic/wallpaperStorage'
 
 import { version } from '../../../../package.json'
 
 const { t } = useI18n()
+const toast = useToast()
+const imageBytes = ref(0)
+async function clearUnusedWallpapers() {
+  await settings.flush()
+  await cleanupWallpapers()
+  imageBytes.value = await wallpaperBytes()
+}
+onMounted(async () => {
+  imageBytes.value = await wallpaperBytes()
+})
 
 const importSettingsRef = ref<HTMLInputElement>()
 const hasNewVersion = ref<boolean>(false)
@@ -15,9 +28,7 @@ const dialogVisible = reactive({
   justWannaChangeTheJob: false,
 })
 
-const isSafari = computed((): boolean =>
-  /^(?:(?!chrome|android).)*safari/i.test(navigator.userAgent),
-)
+const isSafari = computed((): boolean => /^(?:(?!chrome|android).)*safari/i.test(navigator.userAgent))
 
 const safariHelpers = computed((): { name: string, avatar: string, url: string, desc: string }[] => [
   {
@@ -59,14 +70,12 @@ async function handleImportSettings(event: Event) {
   if (!file)
     return
   try {
-    const imported = JSON.parse(await file.text())
-    for (const key of Object.keys(settings.value)) {
-      if (Object.hasOwn(imported, key))
-        (settings.value as any)[key] = imported[key]
-    }
+    const imported = parseSettings(JSON.parse(await file.text()))
+    settings.value = imported
+    await settings.flush()
   }
   catch (error) {
-    console.error('Failed to import settings:', error)
+    toast.error(String(error))
   }
 }
 
@@ -82,9 +91,7 @@ function handleExportSettings() {
 }
 
 function handleResetSettings() {
-  const result = confirm(
-    t('settings.reset_settings_confirm'),
-  )
+  const result = confirm(t('settings.reset_settings_confirm'))
   if (result) {
     // Remember the last selected language when resetting settings
     settings.value = { ...structuredClone(originalSettings), language: settings.value.language }
@@ -108,8 +115,7 @@ async function checkGitHubRelease() {
     if (latestVersion !== currentVersion)
       hasNewVersion.value = true
   }
-  catch {
-  }
+  catch {}
 }
 </script>
 
@@ -117,14 +123,17 @@ async function checkGitHubRelease() {
   <div>
     <div max-w-800px mx-auto>
       <div relative w-200px m-auto>
-        <img
-          :src="`${browser.runtime.getURL('/assets/bewly-vtuber-style-logo.png')}`" alt="" width="200"
-        >
+        <img :src="`${browser.runtime.getURL('/assets/bewly-vtuber-style-logo.png')}`" alt="" width="200">
 
         <a
           v-if="hasNewVersion"
-          href="https://github.com/hakadao/BewlyBewly/releases" target="_blank"
-          pos="absolute bottom-0 right-0" transform="translate-x-50%" un-text="xs $bew-text-1" p="y-1 x-2" bg="$bew-fill-1"
+          href="https://github.com/hakadao/BewlyBewly/releases"
+          target="_blank"
+          pos="absolute bottom-0 right-0"
+          transform="translate-x-50%"
+          un-text="xs $bew-text-1"
+          p="y-1 x-2"
+          bg="$bew-fill-1"
           rounded-12
         >
           NEW
@@ -133,16 +142,12 @@ async function checkGitHubRelease() {
       <section text-2xl text-center mt-2>
         <p flex="inline gap-2" fw-900>
           <span>BewlyBewly</span>
-          <span
-            v-if="isDev"
-            inline-block text="$bew-warning-color"
-          >
-            Dev
-          </span>
+          <span v-if="isDev" inline-block text="$bew-warning-color"> Dev </span>
         </p>
         <p text-center>
           <a
-            href="https://github.com/hakadao/BewlyBewly/releases" target="_blank"
+            href="https://github.com/hakadao/BewlyBewly/releases"
+            target="_blank"
             un-text="sm color-$bew-text-2 hover:color-$bew-text-3"
           >
             v{{ version }} - Farewell
@@ -151,8 +156,11 @@ async function checkGitHubRelease() {
       </section>
 
       <section
-        style="box-shadow: var(--bew-shadow-1), var(--bew-shadow-edge-glow-1);"
-        mt-6 p-4 bg="$bew-fill-alt" rounded="$bew-radius"
+        style="box-shadow: var(--bew-shadow-1), var(--bew-shadow-edge-glow-1)"
+        mt-6
+        p-4
+        bg="$bew-fill-alt"
+        rounded="$bew-radius"
         flex="~ col items-center gap-6"
       >
         <section w-full>
@@ -161,36 +169,44 @@ async function checkGitHubRelease() {
           </h3>
           <div grid="~ xl:cols-6 lg:cols-5 md:cols-4 cols-3 gap-2">
             <a
-              href="https://github.com/hakadao/BewlyBewly" target="_blank"
+              href="https://github.com/hakadao/BewlyBewly"
+              target="_blank"
               class="link-card"
               bg="black dark:white !opacity-10 !hover:opacity-20"
               un-text="black dark:white"
             >
-              <div i-tabler:brand-github /> GitHub
+              <div i-tabler:brand-github />
+              GitHub
             </a>
             <a
-              href="https://space.bilibili.com/5011356/dynamic" target="_blank"
+              href="https://space.bilibili.com/5011356/dynamic"
+              target="_blank"
               class="link-card"
               bg="#fb7299 dark:#ffa7c0 !opacity-10 !hover:opacity-20"
               un-text="#fb7299 dark:#ffa7c0"
             >
-              <div i-tabler:brand-bilibili /> Bilibili
+              <div i-tabler:brand-bilibili />
+              Bilibili
             </a>
             <a
-              href="https://discord.gg/TS6vgBmZVp" target="_blank"
+              href="https://discord.gg/TS6vgBmZVp"
+              target="_blank"
               class="link-card"
               bg="#5866f2 dark:#a0a7f8 !opacity-10 !hover:opacity-20"
               un-text="#5866f2 dark:#a0a7f8"
             >
-              <div i-tabler:brand-discord /> Discord
+              <div i-tabler:brand-discord />
+              Discord
             </a>
             <a
-              href="https://x.com/search?q=BewlyBewly%20(from%3Ahakadaooo%20OR%20from%3Ahakadaoooo)&src=typed_query" target="_blank"
+              href="https://x.com/search?q=BewlyBewly%20(from%3Ahakadaooo%20OR%20from%3Ahakadaoooo)&src=typed_query"
+              target="_blank"
               class="link-card"
               bg="#1d9bf0 dark:#7ec6f7 !opacity-10 !hover:opacity-20"
               un-text="#1d9bf0 dark:#7ec6f7"
             >
-              <div i-tabler:brand-twitter /> Twitter
+              <div i-tabler:brand-twitter />
+              Twitter
             </a>
 
             <button
@@ -199,7 +215,8 @@ async function checkGitHubRelease() {
               un-text="#f87171 dark:#fca5a5"
               @click="dialogVisible.sponsor = true"
             >
-              <div i-tabler:heart /> {{ $t('settings.sponsor') }}
+              <div i-tabler:heart />
+              {{ $t('settings.sponsor') }}
             </button>
             <Dialog
               v-if="dialogVisible.sponsor"
@@ -215,33 +232,23 @@ async function checkGitHubRelease() {
               </p>
               <p mb-4>
                 1. {{ $t('settings.afdian') }}:
-                <a
-                  href="https://afdian.com/@hakadao" target="_blank"
-                  color="$bew-theme-color"
-                >https://afdian.com/@hakadao</a>
+                <a href="https://afdian.com/@hakadao" target="_blank" color="$bew-theme-color">https://afdian.com/@hakadao</a>
               </p>
-              <img
-                :src="browser.runtime.getURL('/assets/sponsor/afdian.jpg')" alt=""
-                max-w-400px w-full
-              >
+              <img :src="browser.runtime.getURL('/assets/sponsor/afdian.jpg')" alt="" max-w-400px w-full>
 
               <p mb-4 mt-6>
                 2. Buy me a coffee:
-                <a
-                  href="https://buymeacoffee.com/hakadao" target="_blank"
-                  color="$bew-theme-color"
-                >https://buymeacoffee.com/hakadao</a>
+                <a href="https://buymeacoffee.com/hakadao" target="_blank" color="$bew-theme-color">https://buymeacoffee.com/hakadao</a>
               </p>
-              <img
-                :src="browser.runtime.getURL('/assets/sponsor/bmc.png')" alt=""
-                max-w-150px w-full
-              >
+              <img :src="browser.runtime.getURL('/assets/sponsor/bmc.png')" alt="" max-w-150px w-full>
             </Dialog>
           </div>
         </section>
         <section w-full>
           <h3 class="title">
-            {{ `${$t('settings.import_settings')} / ${$t('settings.export_settings')} / ${$t('settings.reset_settings')}` }}
+            {{
+              `${$t('settings.import_settings')} / ${$t('settings.export_settings')} / ${$t('settings.reset_settings')}`
+            }}
           </h3>
           <div flex="~ gap-2">
             <Button class="btn" @click="importSettingsRef?.click()">
@@ -251,6 +258,9 @@ async function checkGitHubRelease() {
               {{ $t('settings.import_settings') }}
             </Button>
             <input ref="importSettingsRef" type="file" accept=".json" hidden @change="handleImportSettings">
+            <Button @click="clearUnusedWallpapers">
+              {{ $t('settings.clear_unused_wallpapers') }} ({{ (imageBytes / 1024 / 1024).toFixed(1) }} MiB)
+            </Button>
             <Tooltip placement="bottom" :content="$t('settings.export_settings_desc')">
               <Button class="btn" @click="handleExportSettings">
                 <template #left>
@@ -274,10 +284,12 @@ async function checkGitHubRelease() {
           <div grid="~ lg:cols-2 md:cols-2 cols-1 gap-2" mx--2>
             <div v-for="helper in safariHelpers" :key="helper.name">
               <a
-                :href="helper.url" target="_blank"
+                :href="helper.url"
+                target="_blank"
                 flex="~ items-center gap-2"
                 bg="hover:$bew-fill-2"
-                p-2 rounded="$bew-radius"
+                p-2
+                rounded="$bew-radius"
                 duration-300
               >
                 <img :src="browser.runtime.getURL(helper.avatar)" alt="" w-30px h-30px rounded-full>
@@ -295,13 +307,8 @@ async function checkGitHubRelease() {
           <h3 class="title">
             {{ $t('settings.contributors') }}
           </h3>
-          <a
-            href="https://github.com/hakadao/BewlyBewly/graphs/contributors" target="_blank"
-          >
-            <img
-              src="https://contrib.rocks/image?repo=hakadao/BewlyBewly"
-              w-full
-            >
+          <a href="https://github.com/hakadao/BewlyBewly/graphs/contributors" target="_blank">
+            <img src="https://contrib.rocks/image?repo=hakadao/BewlyBewly" w-full>
           </a>
         </section>
       </section>
