@@ -83,6 +83,52 @@ it('loads both types, sorts the complete list and deduplicates seasons', async (
   expect(seriesAirDate(undefined)).toBe('')
 })
 
+it('publishes the first small batch while other pages are pending, then sorts and deduplicates the full list', async () => {
+  let finishAnime!: (value: WatchListResult) => void
+  let finishDramas!: (value: WatchListResult) => void
+  const request = vi.fn(({ type, pn }) => {
+    if (type === 2) {
+      return new Promise<WatchListResult>((resolve) => {
+        finishDramas = resolve
+      })
+    }
+    if (pn === 1)
+      return Promise.resolve(response([1, 2], 3, 2))
+    return new Promise<WatchListResult>((resolve) => {
+      finishAnime = resolve
+    })
+  })
+  const publish = vi.fn()
+  const progress = vi.fn()
+  const load = createSubscribedSeriesLoader(request, () => '123', progress).load(() => true, publish)
+  await vi.waitFor(() => expect(publish).toHaveBeenCalledOnce())
+  expect(publish.mock.calls[0][0].items.map((item: { uniqueId: string }) => item.uniqueId)).toEqual(['1', '2'])
+  expect(publish.mock.calls[0][0].done).toBe(false)
+  expect(request.mock.calls.every(([params]) => params.ps === 20)).toBe(true)
+  const latest = response([3], 3, 2)
+  latest.data.list[0].publish = { release_date: '2026-01-01' } as List['publish']
+  finishAnime(latest)
+  finishDramas(response([1]))
+  const result = await load
+  expect(result.done).toBe(true)
+  expect(result.items.map(item => item.uniqueId)).toEqual(['3', '1', '2'])
+  expect(progress).toHaveBeenLastCalledWith(3)
+})
+
+it('does not publish an obsolete subscription response after reset', async () => {
+  const finish: ((value: WatchListResult) => void)[] = []
+  const request = vi.fn(() => new Promise<WatchListResult>((resolve) => {
+    finish.push(resolve)
+  }))
+  const publish = vi.fn()
+  const loader = createSubscribedSeriesLoader(request, () => '123')
+  const load = loader.load(() => true, publish)
+  loader.reset()
+  finish.forEach(resolve => resolve(response([1])))
+  expect((await load).items).toEqual([])
+  expect(publish).not.toHaveBeenCalled()
+})
+
 it('retries only failed subscription pages and ignores an obsolete load', async () => {
   let fail = true
   const request = vi.fn(async ({ type, pn }) => {

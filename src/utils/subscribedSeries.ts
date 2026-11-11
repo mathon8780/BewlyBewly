@@ -1,4 +1,5 @@
 import type { Video } from '~/components/VideoCard/types'
+import type { FeedPage } from '~/composables/useWindowedFeed'
 import type { List, WatchListResult } from '~/models/anime/watchList'
 
 interface WatchListParams {
@@ -9,19 +10,52 @@ interface WatchListParams {
   follow_status: number
 }
 
+export interface SubscribedSeriesItem {
+  uniqueId: string
+  airDate: string
+  totalEpisodes: number
+  releasedEpisodes: number
+  posterCover: string
+  video: Video
+}
+
+const PAGE_SIZE = 20
+
+function sortedItems(series: Map<number, List>): SubscribedSeriesItem[] {
+  return [...series.values()]
+    .sort((a, b) => premiereTimestamp(b) - premiereTimestamp(a))
+    .map(item => ({
+      uniqueId: String(item.season_id),
+      airDate: seriesAirDate(item.publish?.pub_time),
+      totalEpisodes: item.total_count || 0,
+      releasedEpisodes: item.formal_ep_count || 0,
+      posterCover: item.cover,
+      video: {
+        id: item.season_id,
+        title: item.title,
+        cover: item.horizontal_cover_16_9 || item.cover,
+        url: item.url || `https://www.bilibili.com/bangumi/play/ss${item.season_id}`,
+        view: item.stat?.view,
+        danmaku: item.stat?.danmaku,
+        desc: item.progress,
+        threePointV2: [],
+      },
+    }))
+}
+
 export function createSubscribedSeriesLoader(
   request: (params: WatchListParams) => Promise<WatchListResult>,
   userId: () => string | undefined,
   onProgress: (count: number) => void = () => {},
 ) {
-  const makeState = () => ({ pages: [1, 1], complete: [false, false], series: new Map<number, List>() })
+  const makeState = () => ({ pages: [1, 1], complete: [false, false], signatures: ['', ''], series: new Map<number, List>() })
   let state = makeState()
   return {
     reset() {
       state = makeState()
       onProgress(0)
     },
-    async load(current: () => boolean) {
+    async load(current: () => boolean, publish: (page: FeedPage<SubscribedSeriesItem>) => void = () => {}) {
       const vmid = userId()
       if (!vmid)
         return { items: [], done: true, unauthorized: true }
@@ -31,14 +65,13 @@ export function createSubscribedSeriesLoader(
       let failed = false
       const results = await Promise.allSettled(
         [1, 2].map(async (type) => {
-          let lastPage = ''
           try {
             const index = type - 1
             while (!owner.complete[index]) {
-              if (failed || !current() || owner !== state)
+              if (failed || unauthorized || !current() || owner !== state)
                 return
               const page = owner.pages[index]
-              const response = await request({ vmid, type, pn: page, ps: 30, follow_status: 0 })
+              const response = await request({ vmid, type, pn: page, ps: PAGE_SIZE, follow_status: 0 })
               if (!current() || owner !== state)
                 return
               if (response.code === -101) {
@@ -49,13 +82,17 @@ export function createSubscribedSeriesLoader(
                 throw new Error(response.message)
               const { list, total, ps } = response.data
               const signature = (list || []).map(item => item.season_id).join(',')
+              const done = !list?.length || page * (ps || PAGE_SIZE) >= total
+              if (!done && signature === owner.signatures[index])
+                throw new Error('Subscription pagination made no progress')
               for (const item of list || []) series.set(item.season_id, item)
               onProgress(series.size)
-              owner.complete[index] = !list?.length || page * (ps || 30) >= total
-              if (!owner.complete[index] && signature === lastPage)
-                throw new Error('Subscription pagination made no progress')
-              lastPage = signature
+              owner.complete[index] = done
+              owner.signatures[index] = signature
               owner.pages[index]++
+              // 首次无缓存时逐页显示；完整结果仍在末尾返回，供统一排序与持久化。
+              if (!unauthorized)
+                publish({ items: sortedItems(series), done: false })
             }
           }
           catch (error) {
@@ -71,25 +108,7 @@ export function createSubscribedSeriesLoader(
         return { items: [], done: true }
       if (unauthorized)
         return { items: [], done: true, unauthorized: true }
-      // 两类订阅全部加载后统一排序，避免后续分页中的新剧排在旧剧后面。
-      const items = [...series.values()]
-        .sort((a, b) => premiereTimestamp(b) - premiereTimestamp(a))
-        .map(item => ({
-          uniqueId: String(item.season_id),
-          airDate: seriesAirDate(item.publish?.pub_time),
-          totalEpisodes: item.total_count || 0,
-          releasedEpisodes: item.formal_ep_count || 0,
-          video: {
-            id: item.season_id,
-            title: item.title,
-            cover: item.horizontal_cover_16_9 || item.cover,
-            url: item.url || `https://www.bilibili.com/bangumi/play/ss${item.season_id}`,
-            view: item.stat?.view,
-            danmaku: item.stat?.danmaku,
-            desc: item.progress,
-            threePointV2: [],
-          } satisfies Video,
-        }))
+      const items = sortedItems(series)
       series.clear()
       return { items, done: true }
     },

@@ -104,13 +104,15 @@ onUnmounted(() => {
 function handleChangeTab(tab: HomeTab) {
   if (activatedPage.value === tab.page) {
     const osInstance = scrollbarRef.value?.osInstance()
-    const scrollTop = osInstance.elements().viewport.scrollTop as number
+    const scrollTop = osInstance?.elements().viewport.scrollTop ?? 0
 
     if ((!settings.value.useSearchPageModeOnHomePage && scrollTop > 0) || (settings.value.useSearchPageModeOnHomePage && scrollTop > 510)) {
       handleThrottledBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
     }
     else {
       if (tabContentLoading.value)
+        return
+      if (tab.page === HomeSubPage.SubscribedSeries)
         return
       tabPageRef.value && tabPageRef.value.initData()
     }
@@ -261,8 +263,8 @@ function toggleTabContentLoading(loading: boolean) {
         </div>
       </header>
 
-      <Transition name="page-fade">
-        <KeepAlive include="ForYou" :max="1">
+      <Transition name="page-fade" :css="activatedPage !== HomeSubPage.SubscribedSeries">
+        <KeepAlive include="ForYou,SubscribedSeries" :max="2">
           <Component
             :is="pages[activatedPage]" :key="activatedPage"
             ref="tabPageRef"

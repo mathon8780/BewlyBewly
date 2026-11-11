@@ -11,10 +11,16 @@ export interface FeedPage<T> {
   unauthorized?: boolean
 }
 
+/** Snapshots contain a complete, sorted feed rather than a single API page. */
+export interface FeedSnapshot<T> {
+  page: FeedPage<T>
+  stale: boolean
+}
+
 /** A bounded browse window keeps its cursor until the reader explicitly continues. */
 export function useWindowedFeed<T>(options: {
   key: (item: T) => string
-  loadPage: (current: () => boolean) => Promise<FeedPage<T>>
+  loadPage: (current: () => boolean, publish?: (page: FeedPage<T>) => void) => Promise<FeedPage<T>>
   resetCursor: () => void
   merge?: (previous: T, next: T) => T | undefined
   beforeLoading: () => void
@@ -22,6 +28,12 @@ export function useWindowedFeed<T>(options: {
   minPages?: number
   windowSize?: number
   scrollTarget?: () => number
+  cacheIdentity?: () => unknown
+  snapshot?: {
+    read: () => Promise<FeedSnapshot<T> | undefined>
+    write: (page: FeedPage<T>) => Promise<void>
+    remove: () => Promise<void>
+  }
 }) {
   const { handleReachBottom, handlePageRefresh, handleBackToTop, haveScrollbar } = useBewlyApp()
   const cardState = provideVideoCardState()
@@ -31,10 +43,13 @@ export function useWindowedFeed<T>(options: {
   const noMoreContent = shallowRef(false)
   const needToLoginFirst = shallowRef(false)
   const loadFailed = shallowRef(false)
+  const showingSnapshot = shallowRef(false)
   const limit = options.windowSize ?? 600
   const windowFull = computed(() => items.value.length >= limit && (!noMoreContent.value || pending.value.length > 0))
   const generation = requestGeneration()
   let active = true
+  let identity = options.cacheIdentity?.()
+  let refreshPending = false
 
   function append(incoming: T[]) {
     const combined = [...items.value, ...pending.value]
@@ -63,6 +78,8 @@ export function useWindowedFeed<T>(options: {
   async function load() {
     if (!active || isLoading.value || needToLoginFirst.value)
       return
+    if (options.snapshot && loadFailed.value)
+      return refreshSnapshot(false)
     // Deletions can free slots while the last API page still has buffered items.
     // Consume those first, including the final page, before requesting another.
     if (pending.value.length && items.value.length < limit)
@@ -106,7 +123,70 @@ export function useWindowedFeed<T>(options: {
     }
   }
 
-  async function reset() {
+  function replace(page: FeedPage<T>, clearState = true) {
+    items.value = []
+    pending.value = []
+    if (clearState)
+      cardState.clear()
+    needToLoginFirst.value = !!page.unauthorized
+    noMoreContent.value = page.done || !!page.unauthorized
+    append(page.unauthorized ? [] : page.items)
+  }
+
+  async function refreshSnapshot(restore: boolean) {
+    if (!active || isLoading.value)
+      return
+    const token = generation.capture()
+    const account = identity
+    const current = () => active && generation.isCurrent(token) && account === options.cacheIdentity?.()
+    isLoading.value = true
+    loadFailed.value = false
+    refreshPending = true
+    options.beforeLoading()
+    try {
+      if (restore) {
+        const snapshot = await options.snapshot!.read().catch(() => undefined)
+        if (!current())
+          return
+        if (snapshot) {
+          replace(snapshot.page)
+          showingSnapshot.value = true
+          if (!snapshot.stale) {
+            refreshPending = false
+            return
+          }
+        }
+      }
+      const result = await options.loadPage(current, (partial) => {
+        // 有完整旧缓存时避免被部分数据替换；冷启动则立即展示已返回的批次。
+        if (current() && !showingSnapshot.value)
+          replace(partial, false)
+      })
+      if (!current())
+        return
+      replace(result, showingSnapshot.value)
+      showingSnapshot.value = false
+      refreshPending = false
+      const persist = result.unauthorized ? options.snapshot!.remove() : options.snapshot!.write(result)
+      void persist.catch(error => console.error('[BewlyBewly] Could not persist feed snapshot', error))
+    }
+    catch (error) {
+      if (current()) {
+        loadFailed.value = true
+        refreshPending = false
+        console.error('[BewlyBewly] Could not refresh feed snapshot', error)
+      }
+    }
+    finally {
+      if (active && generation.isCurrent(token)) {
+        isLoading.value = false
+        options.afterLoading()
+      }
+    }
+  }
+
+  async function resetFeed(restoreSnapshot = false) {
+    identity = options.cacheIdentity?.()
     generation.invalidate()
     isLoading.value = false
     items.value = []
@@ -114,12 +194,23 @@ export function useWindowedFeed<T>(options: {
     noMoreContent.value = false
     needToLoginFirst.value = false
     loadFailed.value = false
+    showingSnapshot.value = false
+    refreshPending = false
     cardState.clear()
     options.resetCursor()
-    await load()
+    if (options.snapshot)
+      await refreshSnapshot(restoreSnapshot)
+    else
+      await load()
+  }
+
+  async function reset() {
+    await resetFeed()
   }
 
   async function continueWindow() {
+    if (options.snapshot && isLoading.value)
+      return
     generation.invalidate()
     isLoading.value = false
     items.value = pending.value.slice(0, limit)
@@ -152,16 +243,24 @@ export function useWindowedFeed<T>(options: {
 
   onMounted(() => {
     bindActions()
-    void reset()
+    void resetFeed(true)
   })
   onActivated(() => {
     active = true
     bindActions()
-    if (!items.value.length && !loadFailed.value)
+    if (identity !== options.cacheIdentity?.()) {
+      void resetFeed(true)
+    }
+    else if (options.snapshot && refreshPending && !isLoading.value) {
+      options.resetCursor()
+      void refreshSnapshot(!items.value.length)
+    }
+    else if (!items.value.length && !loadFailed.value) {
       void load()
+    }
   })
   onDeactivated(stop)
   onBeforeUnmount(stop)
 
-  return { items, isLoading, noMoreContent, needToLoginFirst, loadFailed, windowFull, load, reset, continueWindow }
+  return { items, isLoading, noMoreContent, needToLoginFirst, loadFailed, showingSnapshot, windowFull, load, reset, continueWindow }
 }

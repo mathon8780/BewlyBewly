@@ -2,6 +2,9 @@ import type { wallpaperItem } from '~/constants/imgs'
 import type { HomeSubPage } from '~/contentScripts/views/Home/types'
 import type { AppPage } from '~/enums/appEnums'
 
+import type { SeriesDisplayOptions, SeriesStyle } from './seriesSettings'
+import { defaultSeriesStyles, parseSeriesStyles } from './seriesSettings'
+
 export interface Settings {
   touchScreenOptimization: boolean
   enableGridLayoutSwitcher: boolean
@@ -28,6 +31,9 @@ export interface Settings {
   blockAds: boolean
   blockAtComments: boolean
   blockTopSearchPageAds: boolean
+
+  blockRelatedVideos: boolean
+  blockVideoActivities: boolean
 
   enableVideoCtrlBarOnVideoCard: boolean
   hoverVideoCardDelayed: boolean
@@ -97,6 +103,9 @@ export interface Settings {
 
   followingTabShowLivestreamingVideos: boolean
 
+  seriesStyle: SeriesStyle
+  seriesStyles: Record<SeriesStyle, SeriesDisplayOptions>
+
   homePageTabVisibilityList: { page: HomeSubPage, visible: boolean }[]
   alwaysShowTabsOnHomePage: boolean
   useSearchPageModeOnHomePage: boolean
@@ -132,6 +141,9 @@ export const originalSettings: Settings = {
   blockAds: false,
   blockAtComments: false,
   blockTopSearchPageAds: false,
+
+  blockRelatedVideos: false,
+  blockVideoActivities: false,
 
   enableVideoPreview: true,
   enableVideoCtrlBarOnVideoCard: false,
@@ -202,6 +214,9 @@ export const originalSettings: Settings = {
 
   followingTabShowLivestreamingVideos: false,
 
+  seriesStyle: 'overlay',
+  seriesStyles: defaultSeriesStyles(),
+
   homePageTabVisibilityList: [],
   alwaysShowTabsOnHomePage: false,
   useSearchPageModeOnHomePage: false,
@@ -214,6 +229,7 @@ export const originalSettings: Settings = {
 }
 
 const choices: Partial<Record<keyof Settings, readonly string[]>> = {
+  seriesStyle: ['overlay', 'poster', 'below'],
   customizeFont: ['default', 'recommend', 'custom'],
   theme: ['light', 'dark', 'auto'],
   videoCardLinkOpenMode: ['drawer', 'newTab', 'currentTab'],
@@ -237,6 +253,10 @@ export function parseSettings(input: unknown): Settings {
     if (!Object.hasOwn(input, key))
       continue
     const supplied = (input as Record<string, unknown>)[key]
+    if (key === 'seriesStyles') {
+      result.seriesStyles = parseSeriesStyles(supplied)
+      continue
+    }
     const value = key === 'customizeFont' && typeof supplied === 'boolean' ? 'recommend' : supplied
     const fallback = result[key]
     const valid = Array.isArray(fallback)

@@ -1,0 +1,20 @@
+/* 推荐列表单独隐藏，保留同栏中的分 P、合集、选集和作者信息。 */
+html[data-bewly-hide-recommendations]
+  :is(
+    .recommend-list-v1,
+    .recommend-list-pr,
+    .recommend-list,
+    .recommend-container,
+    .recom-wrapper,
+    [class*="recommend_wrap"],
+    [class*="RecommendSkeleton_blockWrap"],
+    .bpx-player-ending-related,
+    .bilibili-player-video-recommend
+  ) {
+  display: none !important;
+}
+
+/* 只隐藏活动所在的资源条目，保留同列表中的其他资源。 */
+html[data-bewly-hide-activities] .video-resource-list > .video-resource-list__item:has(.activity-m-v1) {
+  display: none !important;
+}

@@ -58,6 +58,39 @@ iframe_drawer:
   press_esc_again_to_close: 撳多次 Esc 關閉
 
 settings:
+  group_playback_page: 播放頁面
+  block_related_videos: 隱藏相關推薦
+  block_related_videos_desc: 隱藏播放頁同播放器入面嘅推薦內容，保留分 P、合集同選集。
+  block_video_activities: 隱藏活動推廣
+  block_video_activities_desc: 隱藏影片簡介同留言區之間嘅活動推廣項目，保留其他資源。
+  series_always_visible: 詳情一直顯示，唔使懸停或者撳。
+  series_behavior_hint: 實際卡片跟呢個設定顯示詳情；預覽一直顯示展開結果。
+  series_behavior: 顯示行為
+  series_preview_expanded: 預覽直接顯示詳情展開後嘅效果，唔使懸停。
+  series_style_below_desc: 橫向封面，詳情喺下方
+  series_style_poster_desc: 直向封面，詳情喺右邊
+  series_style_overlay_desc: 詳情疊加喺橫向封面上
+  series_style_below: C · 下方資訊
+  series_style_poster: B · 海報詳情
+  series_style_overlay: A · 封面疊加
+  series_reset: 還原此樣式預設值
+  series_edit: 編輯樣式
+  series_style: 卡片樣式
+  series_preview: 卡片預覽
+  series_preview_hint: 示例封面同資料；修改會自動儲存並套用到訂閱劇集。
+  series_preview_title: 示例劇集：穿越山海嘅旅程同沿途不期而遇嘅故事
+  series_display: 顯示方式
+  series_content: 顯示內容
+  series_details_mode: 詳情顯示方式
+  series_mode_hover: 懸停或聚焦
+  series_mode_overlay: 一直疊加
+  series_cover_fit: 封面適應方式
+  series_fit_cover: 裁切填滿
+  series_fit_contain: 完整顯示
+  series_title_lines: 標題顯示
+  series_title_one: 一行
+  series_title_two: 兩行
+  series_title_full: 完整標題
   clear_unused_wallpapers: 清理冇使用嘅桌布
   group_blocking: 屏蔽
   block_at_comments: '屏蔽含 {''@''} 嘅一級留言'
@@ -432,7 +465,6 @@ home:
   series_plays: 播放量
   series_episodes: 集數
   series_air_date: 開播時間
-  series_details: 睇劇集資料
   tell_us_why: 點解噉做...
   not_interested_desc: 你可以用 <kbd>↑</kbd> 同 <kbd>↓</kbd> 嚟揀個理由，抑或用數字鍵嚟直接揀理由，撳 <kbd>Enter</kbd> 就直接提交。
 

@@ -1,27 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useI18n } from 'vue-i18n'
 
 import { BewlyPage } from '../types'
-
-const { t } = useI18n()
+import SubscribedSeries from './SubscribedSeries/SubscribedSeries.vue'
 
 const activePage = ref<BewlyPage>(BewlyPage.Home)
 
 const pages = [
   {
     value: BewlyPage.Home,
-    title: t('settings.menu_home'),
+    title: 'settings.menu_home',
     icon: 'i-mingcute:home-5-line',
     iconActivated: 'i-mingcute:home-5-fill',
     component: defineAsyncComponent(() => import('./Home/Home.vue')),
   },
   {
     value: BewlyPage.Search,
-    title: t('settings.menu_search_page'),
+    title: 'settings.menu_search_page',
     icon: 'i-mingcute:search-2-line',
     iconActivated: 'i-mingcute:search-2-fill',
     component: defineAsyncComponent(() => import('./SearchPage/SearchPage.vue')),
+  },
+  {
+    value: BewlyPage.SubscribedSeries,
+    title: 'home.subscribed_series',
+    icon: 'i-mingcute:film-line',
+    iconActivated: 'i-mingcute:film-fill',
+    component: SubscribedSeries,
   },
 ]
 </script>
@@ -42,7 +47,7 @@ const pages = [
           >
             <div class="flex items-center">
               <div :class="activePage === page.value ? page.iconActivated : page.icon" class="mr-2 text-lg" />
-              <span>{{ page.title }}</span>
+              <span>{{ $t(page.title) }}</span>
             </div>
           </li>
         </ul>
@@ -50,10 +55,10 @@ const pages = [
     </div>
 
     <!-- Content -->
-    <div class="flex-1 p-4">
-      <Transition name="page-fade">
+    <div class="min-w-0 flex-1 p-4">
+      <KeepAlive include="SubscribedSeries" :max="1">
         <Component :is="pages.find(page => page.value === activePage)?.component" />
-      </Transition>
+      </KeepAlive>
     </div>
   </div>
 </template>

@@ -44,8 +44,9 @@ const scrollbarRef = ref()
 watch(
   () => activatedMenuItem.value,
   () => {
-    const osInstance = scrollbarRef.value.osInstance()
-    osInstance.elements().viewport.scrollTop = 0
+    const viewport = scrollbarRef.value?.osInstance()?.elements().viewport
+    if (viewport)
+      viewport.scrollTop = 0
   },
 )
 
@@ -302,9 +303,9 @@ function setCurrentTitle() {
           <main pos="absolute top-80px left-0" w-full min-h="[calc(100%-80px)]" p="x-12 b-10">
             <!-- <div h-80px mt--8 /> -->
 
-            <Transition name="page-fade">
+            <KeepAlive include="BewlyPages" :max="1">
               <Component :is="settingsMenu[activatedMenuItem as keyof typeof settingsMenu]" />
-            </Transition>
+            </KeepAlive>
           </main>
         </OverlayScrollbarsComponent>
       </div>

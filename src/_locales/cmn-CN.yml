@@ -58,6 +58,39 @@ iframe_drawer:
   press_esc_again_to_close: 再次按下 Esc 关闭
 
 settings:
+  group_playback_page: 播放页面
+  block_related_videos: 屏蔽相关推荐
+  block_related_videos_desc: 隐藏播放页及播放器中的推荐内容，保留分 P、合集和选集。
+  block_video_activities: 屏蔽活动推广
+  block_video_activities_desc: 隐藏视频简介与评论区之间的活动推广条目，保留其他资源。
+  series_always_visible: 详情始终显示，无需悬停或点击。
+  series_behavior_hint: 实际卡片按此设置显示详情；预览始终呈现展开结果。
+  series_behavior: 显示行为
+  series_preview_expanded: 预览直接展示详情展开后的效果，无需悬停。
+  series_style_below_desc: 横向封面，详情位于下方
+  series_style_poster_desc: 竖向封面，详情位于右侧
+  series_style_overlay_desc: 详情叠加在横向封面上
+  series_style_below: C · 下方信息
+  series_style_poster: B · 海报详情
+  series_style_overlay: A · 封面叠加
+  series_reset: 恢复此样式默认值
+  series_edit: 样式编辑
+  series_style: 卡片样式
+  series_preview: 卡片预览
+  series_preview_hint: 示例封面与数据；修改自动保存并应用于订阅剧集。
+  series_preview_title: 示例剧集：穿越山海的旅行与沿途不期而遇的故事
+  series_display: 显示方式
+  series_content: 显示内容
+  series_details_mode: 详情显示方式
+  series_mode_hover: 悬停或聚焦
+  series_mode_overlay: 始终叠加
+  series_cover_fit: 封面适应方式
+  series_fit_cover: 裁切填满
+  series_fit_contain: 完整显示
+  series_title_lines: 标题显示
+  series_title_one: 一行
+  series_title_two: 两行
+  series_title_full: 完整标题
   clear_unused_wallpapers: 清理未使用壁纸
   group_blocking: 屏蔽
   block_at_comments: '屏蔽含 {''@''} 的一级评论'
@@ -433,7 +466,6 @@ home:
   series_plays: 播放量
   series_episodes: 话数
   series_air_date: 开播时间
-  series_details: 查看剧集信息
   tell_us_why: 为什么这么做...
   not_interested_desc: 你可以使用 <kbd>↑</kbd> 和 <kbd>↓</kbd> 来选择原因，或者直接使用数字键选择原因，按 <kbd>Enter</kbd> 就直接提交。
 

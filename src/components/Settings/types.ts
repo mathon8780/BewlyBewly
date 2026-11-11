@@ -11,6 +11,7 @@ export enum MenuType {
 export enum BewlyPage {
   Home = 'Home',
   Search = 'Search',
+  SubscribedSeries = 'SubscribedSeries',
 }
 
 export interface MenuItem {

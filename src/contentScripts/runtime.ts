@@ -15,6 +15,7 @@ import { version } from '../../package.json'
 import { startCommentFilter } from './commentFilter'
 import { mirrorExtensionStyles } from './extensionStyles'
 import { supportsContentScript } from './pageScope'
+import { startPlaybackFocus } from './playbackFocus'
 
 const isFirefox: boolean = /Firefox/i.test(navigator.userAgent)
 
@@ -46,6 +47,11 @@ export async function start() {
   if (!isSupportedPages() && !isSupportedIframePages())
     return
   const disposeDarkTheme = initializeDarkTheme()
+  const playbackFocus = startPlaybackFocus(settings.value)
+  const stopPlaybackWatch = watch(
+    () => [settings.value.blockRelatedVideos, settings.value.blockVideoActivities],
+    () => playbackFocus.update(settings.value),
+  )
   const stopCommentWatch = watch(
     () => settings.value.blockAtComments,
     (enabled, _, onCleanup) => {
@@ -58,6 +64,8 @@ export async function start() {
     if (!event.persisted) {
       disposeDarkTheme()
       stopCommentWatch()
+      stopPlaybackWatch()
+      playbackFocus.dispose()
     }
   })
   let beforeLoadedStyleEl: HTMLStyleElement | undefined

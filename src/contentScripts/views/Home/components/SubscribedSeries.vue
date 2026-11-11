@@ -2,9 +2,11 @@
 import VirtualFeed from '~/components/VirtualFeed.vue'
 import { useWindowedFeed } from '~/composables/useWindowedFeed'
 import type { GridLayoutType } from '~/logic'
+import { settings } from '~/logic'
 import api from '~/utils/api'
 import { getUserID } from '~/utils/main'
 import { createSubscribedSeriesLoader } from '~/utils/subscribedSeries'
+import { createSubscribedSeriesCache } from '~/utils/subscribedSeriesCache'
 
 import SubscribedSeriesCard from './SubscribedSeriesCard.vue'
 
@@ -23,13 +25,15 @@ const {
   needToLoginFirst,
   windowFull,
   loadFailed,
+  showingSnapshot,
   load: getData,
   reset: initData,
   continueWindow,
 } = useWindowedFeed({
   key: video => video.uniqueId,
-  minPages: 3,
   resetCursor: loader.reset,
+  cacheIdentity: getUserID,
+  snapshot: createSubscribedSeriesCache(getUserID),
   beforeLoading: () => emit('beforeLoading'),
   afterLoading: () => emit('afterLoading'),
   loadPage: loader.load,
@@ -58,15 +62,18 @@ defineExpose({ initData })
     </Empty>
     <VirtualFeed
       v-else
+      :key="settings.seriesStyle"
       :items="videoList"
       :item-key="(video) => video.uniqueId"
       :layout="props.gridLayout"
-      :max-columns="4"
+      :max-columns="settings.seriesStyle === 'poster' ? 3 : 4"
+      :column-offset="settings.seriesStyle === 'poster' ? 1 : 0"
     >
       <template #default="{ item: video, index }">
         <SubscribedSeriesCard
           :cover-loading="index < 10 ? 'eager' : 'lazy'"
           :video="video.video"
+          :poster-cover="video.posterCover"
           :air-date="video.airDate"
           :total-episodes="video.totalEpisodes"
           :released-episodes="video.releasedEpisodes"
@@ -80,14 +87,14 @@ defineExpose({ initData })
       class="pb-4"
       :description="$t('common.no_more_content')"
     />
-    <Loading v-if="isLoading" />
+    <Loading v-if="isLoading && !showingSnapshot" />
     <p v-if="isLoading" text-center>
       {{ $t('common.loaded_items', { count: loadedCount }) }}
     </p>
-    <Button v-if="windowFull" class="my-4" @click="continueWindow">
+    <Button v-if="windowFull" :disabled="isLoading" class="my-4" @click="continueWindow">
       {{ $t('common.continue_browsing') }}
     </Button>
-    <Button v-else-if="loadFailed" class="my-4" @click="getData">
+    <Button v-if="loadFailed" class="my-4" @click="getData">
       {{ $t('common.retry') }}
     </Button>
   </div>

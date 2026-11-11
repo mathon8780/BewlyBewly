@@ -9,7 +9,7 @@
 - Requirements given in a single task apply only to that task unless the user explicitly makes them a long-term constraint or project convention.
 - Clarify when multiple interpretations of the objective or scope would materially change the work; make ordinary implementation choices independently based on the existing project and explain them when relevant.
 - Subject to higher-priority system, platform, and safety constraints, the user's explicit instruction for the current task overrides project defaults and conventions. If it materially overrides a convention, state the conflict before proceeding.
-- Language: use <user's preferred language> for user-facing content (comments, documentation, UI text, explanations); use English for code, identifiers, commands, API names, technical literals, and other internal implementation content. Treat the concrete language as a user preference, not a project convention.
+- Language: use chinese for user-facing content (comments, documentation, UI text, explanations); use English for code, identifiers, commands, API names, technical literals, and other internal implementation content. Treat the concrete language as a user preference, not a project convention.
 
 ## Core Principles
 

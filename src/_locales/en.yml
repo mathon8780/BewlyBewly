@@ -58,6 +58,39 @@ iframe_drawer:
   press_esc_again_to_close: Press Esc again to close
 
 settings:
+  group_playback_page: Playback pages
+  block_related_videos: Hide related recommendations
+  block_related_videos_desc: 'Hide recommendations on playback pages and in the player; keep parts, collections, and episode lists.'
+  block_video_activities: Hide promotional activities
+  block_video_activities_desc: Hide activity promotions between the video description and comments; keep other resources.
+  series_always_visible: 'Details are always visible, without hovering or clicking.'
+  series_behavior_hint: This controls when actual cards show details. The preview stays expanded.
+  series_behavior: Display behavior
+  series_preview_expanded: Preview shows expanded details without hovering.
+  series_style_below_desc: Landscape cover with details below
+  series_style_poster_desc: Portrait cover with details alongside
+  series_style_overlay_desc: Details over a landscape cover
+  series_style_below: C · Details below
+  series_style_poster: B · Poster details
+  series_style_overlay: A · Cover overlay
+  series_reset: Reset this style
+  series_edit: Edit style
+  series_style: Card style
+  series_preview: Card preview
+  series_preview_hint: Sample artwork and data. Changes are saved and applied to subscribed series.
+  series_preview_title: 'Sample series: A journey across mountains and seas and the unexpected stories along the way'
+  series_display: Display style
+  series_content: Visible information
+  series_details_mode: Details display
+  series_mode_hover: On hover or focus
+  series_mode_overlay: Always overlay
+  series_cover_fit: Cover fit
+  series_fit_cover: Crop to fill
+  series_fit_contain: Show full image
+  series_title_lines: Title display
+  series_title_one: One line
+  series_title_two: Two lines
+  series_title_full: Full title
   clear_unused_wallpapers: Clear unused wallpapers
   group_blocking: Blocking
   block_at_comments: 'Hide top-level comments containing {''@''}'
@@ -438,7 +471,6 @@ home:
   series_plays: Plays
   series_episodes: Episodes
   series_air_date: First aired
-  series_details: Show series details
   tell_us_why: Choose a reason why
   not_interested_desc: You can use <kbd>↑</kbd> and <kbd>↓</kbd> to choose the reason, or using number keys to choose the reason directly, press <kbd>Enter</kbd> to confirm.
 
